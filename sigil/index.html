@@ -1,0 +1,1272 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Quantum Sigil &amp; Resonance Engine</title>
+<style>
+  :root {
+    --obsidian: #07060a;
+    --ink: #0c0a10;
+    --gold: #d4af37;
+    --gold-soft: #f0d78c;
+    --ivory: #f3e6c4;
+    --muted: #8a7a64;
+    --cyan: #00e5ff;
+    --magenta: #ff4fd8;
+    --line: #3a3328;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--obsidian); color: var(--ivory); }
+  body {
+    font-family: Palatino, "Palatino Linotype", Didot, "Bodoni MT", "Times New Roman", serif;
+    overflow: hidden;
+  }
+  .grain {
+    pointer-events: none; position: fixed; inset: 0; z-index: 40; opacity: 0.14;
+    mix-blend-mode: overlay;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='180' height='180' filter='url(%23n)' opacity='0.7'/%3E%3C/svg%3E");
+  }
+  header {
+    position: relative; z-index: 2;
+    padding: 0.7rem 1.2rem 0.4rem;
+    display: flex; align-items: baseline; justify-content: space-between; gap: 1rem;
+    border-bottom: 1px solid var(--line);
+  }
+  header h1 {
+    margin: 0; font-weight: 500; letter-spacing: 0.22em; font-size: 1.05rem;
+    color: var(--gold-soft);
+  }
+  header .lede { margin: 0; color: var(--muted); font-size: 0.78rem; letter-spacing: 0.08em; }
+  header a { color: var(--cyan); text-decoration: none; font-size: 0.72rem; letter-spacing: 0.12em; text-transform: uppercase; }
+  main {
+    display: grid;
+    grid-template-columns: 300px 1fr 230px;
+    height: calc(100vh - 52px);
+    position: relative; z-index: 1;
+  }
+  aside {
+    padding: 1rem 1.1rem;
+    background: linear-gradient(180deg, #0c0a10 0%, #07060a 100%);
+    border-right: 1px solid var(--line);
+    overflow: auto;
+  }
+  aside.spectrum { border-right: 0; border-left: 1px solid var(--line); padding: 1rem 0.8rem; }
+  label { display: block; font-size: 0.72rem; letter-spacing: 0.16em; text-transform: uppercase; color: var(--muted); margin-bottom: 0.35rem; }
+  #intention {
+    width: 100%; background: #100e16; color: var(--ivory);
+    border: 1px solid #4a3f2c; border-radius: 2px;
+    padding: 0.55rem 0.6rem; font: inherit; font-size: 1rem;
+    outline: none;
+  }
+  #intention:focus { border-color: var(--gold); box-shadow: 0 0 0 1px #d4af3744; }
+  .reduced {
+    margin: 0.55rem 0 0.9rem; font-family: ui-monospace, Menlo, monospace;
+    color: var(--cyan); letter-spacing: 0.28em; font-size: 0.95rem; min-height: 1.2em;
+  }
+  .presets { display: flex; flex-wrap: wrap; gap: 0.35rem; margin-bottom: 1rem; }
+  .presets button {
+    background: transparent; color: var(--muted);
+    border: 1px solid #3a3328; border-radius: 999px;
+    padding: 0.2rem 0.55rem; font: inherit; font-size: 0.72rem;
+    letter-spacing: 0.04em; cursor: pointer;
+  }
+  .presets button:hover, .presets button.active { color: var(--gold-soft); border-color: var(--gold); }
+  .row { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-bottom: 0.5rem; }
+  button.act {
+    background: #16121a; color: var(--gold-soft);
+    border: 1px solid var(--gold); border-radius: 2px;
+    padding: 0.5rem 0.75rem; font: inherit; letter-spacing: 0.12em;
+    text-transform: uppercase; font-size: 0.75rem; cursor: pointer;
+  }
+  button.act.primary { background: var(--gold); color: #140e08; font-weight: 600; }
+  button.act:hover { box-shadow: 0 0 16px #d4af3755; }
+  button.act.on { color: var(--cyan); border-color: var(--cyan); }
+  dl.metrics { margin: 1rem 0 0; font-family: ui-monospace, Menlo, monospace; font-size: 0.72rem; }
+  dl.metrics div { display: grid; grid-template-columns: 92px 1fr; gap: 0.2rem; margin: 0.22rem 0; }
+  dt { color: var(--muted); }
+  dd { margin: 0; color: var(--ivory); word-break: break-all; }
+  dd.violate { color: var(--cyan); }
+  .disclaimer { color: var(--muted); font-size: 0.72rem; line-height: 1.45; margin-top: 1.1rem; }
+  .stage { position: relative; background:
+    radial-gradient(ellipse at 50% 45%, #16111c 0%, #07060a 70%);
+  }
+  #sigil, #sigil3d { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+  #sigil3d { display: none; }
+  #spec { width: 100%; height: 200px; display: block; }
+  .spec-label { font-size: 0.7rem; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); margin-bottom: 0.4rem; }
+  .fund { margin-top: 0.8rem; font-family: ui-monospace, Menlo, monospace; font-size: 0.78rem; color: var(--gold-soft); }
+  .flash { pointer-events: none; position: absolute; inset: 0; background: #fff8e0; opacity: 0; }
+  .grimoire { margin-top: 1.2rem; }
+  .grimoire h2 { margin: 0 0 0.4rem; font-size: 0.72rem; letter-spacing: 0.16em; text-transform: uppercase; color: var(--muted); font-weight: 500; }
+  .grimoire button.entry {
+    display: block; width: 100%; text-align: left;
+    background: transparent; color: var(--ivory); border: 0; border-bottom: 1px solid #2a241c;
+    padding: 0.35rem 0; font: inherit; font-size: 0.75rem; cursor: pointer;
+  }
+  .grimoire button.entry:hover { color: var(--gold-soft); }
+  .grimoire .when { color: var(--muted); font-family: ui-monospace, Menlo, monospace; font-size: 0.65rem; }
+  @media (max-width: 900px) {
+    body { overflow: auto; }
+    main { grid-template-columns: 1fr; height: auto; }
+    .stage { height: 70vh; }
+    aside { border: 0; border-bottom: 1px solid var(--line); }
+  }
+</style>
+<script src="../vendor/three.min.js"></script>
+
+<meta name="theme-color" content="#07060a">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<link rel="manifest" href="../manifest.webmanifest">
+<link rel="apple-touch-icon" href="../icons/apple-touch-icon.png">
+<script src="../app-pwa.js" defer></script>
+
+</head>
+<body>
+<div class="grain" aria-hidden="true"></div>
+<header>
+  <h1>QUANTUM SIGIL</h1>
+  <p class="lede">Resonance Engine · 12 qubits · Three.js sigil · CHSH · Grover · shareable link</p>
+  <a class="back" href="../index.html">← Lab</a>
+</header>
+<main>
+  <aside>
+    <label for="intention">Intention</label>
+    <input id="intention" type="text" maxlength="80" value="clarity focus spark" autocomplete="off" spellcheck="false">
+    <div class="reduced" id="reduced"></div>
+    <div class="presets" id="presets"></div>
+    <div class="row">
+      <button class="act primary" id="cast">Cast / Collapse</button>
+      <button class="act" id="amplify">Amplify</button>
+    </div>
+    <div class="row">
+      <button class="act" id="mute">Sound off</button>
+      <button class="act" id="view3d">3D on</button>
+    </div>
+    <div class="row">
+      <button class="act" id="exportPng">Export PNG</button>
+      <button class="act" id="exportSvg">Export SVG</button>
+      <button class="act" id="copyLink">Copy link</button>
+    </div>
+    <dl class="metrics" id="metrics"></dl>
+    <p class="disclaimer">
+      A 12-qubit circuit is simulated in this browser (a classical statevector, not a quantum processor).
+      Letter-reduction and a hash set the rotation angles and entangling gates.
+      CHSH is a real correlator of two qubits in that state (classical |S|≤2, quantum ≤ 2√2).
+      Amplify runs one Grover / amplitude-amplification iterate toward the bitstring this phrase's own circuit already favors (its leading amplitude). It only boosts an outcome already in the superposition, and too many iterates overshoot.
+      Drones use a Solfeggio-style pitch palette and a binaural beat; this is a musical choice, not a therapy claim.
+      The drawing is sacred-geometry + Chladni math. Symbolic generative art — not magic.
+    </p>
+    <div class="grimoire">
+      <h2>Grimoire (this browser)</h2>
+      <div id="grimoire"></div>
+    </div>
+  </aside>
+  <section class="stage">
+    <canvas id="sigil" width="900" height="900"></canvas>
+    <canvas id="sigil3d" width="900" height="900"></canvas>
+    <div class="flash" id="flash"></div>
+  </section>
+  <aside class="spectrum">
+    <div class="spec-label">Harmonic / Solfeggio-style spectrum</div>
+    <canvas id="spec" width="400" height="240"></canvas>
+    <div class="fund" id="fund"></div>
+    <p class="disclaimer" style="margin-top:1.2rem">
+      A binaural pair (left / right slightly detuned) sits under four Solfeggio-style partials (174, 285, 396, 417, 528, 639, 741, 852 Hz) chosen by the leading probabilities. No healing claim is made.
+    </p>
+  </aside>
+</main>
+<script>
+(function () {
+  const N = 12;
+  const DIM = 1 << N;
+  const PRESETS = [
+    "clarity focus spark",
+    "still water deep root",
+    "forge and become",
+    "remember the way home",
+    "kindle the hidden fire",
+    "silent shield"
+  ];
+  const SOLF = [174, 285, 396, 417, 528, 639, 741, 852];
+  const GRIMOIRE_KEY = "qsigil.grimoire.v1";
+  const AER_SEED = window.AER_SEED || null;
+  const PHI = (1 + Math.sqrt(5)) / 2;
+  const ICO = [
+    [0, 1, PHI], [0, -1, PHI], [0, 1, -PHI], [0, -1, -PHI],
+    [1, PHI, 0], [-1, PHI, 0], [1, -PHI, 0], [-1, -PHI, 0],
+    [PHI, 0, 1], [PHI, 0, -1], [-PHI, 0, 1], [-PHI, 0, -1]
+  ].map(v => { const n = Math.hypot(v[0], v[1], v[2]); return [v[0]/n, v[1]/n, v[2]/n]; });
+
+  function fnv1a(text) {
+    let h = 2166136261;
+    const bytes = new TextEncoder().encode(text);
+    for (let i = 0; i < bytes.length; i++) {
+      h ^= bytes[i];
+      h = Math.imul(h, 16777619) >>> 0;
+    }
+    return h;
+  }
+  function reduceLetters(text) {
+    const raw = (text.toLowerCase().match(/[a-z]/g) || []).join("");
+    const noVowels = raw.replace(/[aeiou]/g, "");
+    let reduced = "";
+    const seen = {};
+    for (const c of noVowels) {
+      if (!seen[c]) { seen[c] = true; reduced += c; }
+    }
+    return { reduced: reduced || "sigil", raw: raw || "sigil" };
+  }
+  function mapIntention(text) {
+    const phrase = text.trim().replace(/\s+/g, " ") || PRESETS[0];
+    const { reduced, raw } = reduceLetters(phrase);
+    const h = fnv1a(phrase.toLowerCase().trim());
+    const thetas = [], phis = [];
+    for (let i = 0; i < N; i++) {
+      const letter = reduced[i % reduced.length];
+      const lv = letter.charCodeAt(0) - 97;
+      const t = (((h >>> (i % 16)) + lv * (i + 3) * 17) % 1000) / 1000;
+      const p = (((h >>> ((i + 7) % 16)) + lv * (i + 5) * 13) % 1000) / 1000;
+      thetas.push(t * Math.PI);
+      phis.push((p * 2 - 1) * Math.PI);
+    }
+    const pairs = [];
+    let x = h;
+    for (let k = 0; k < 6; k++) {
+      let a = (x + k * 7) % N;
+      let b = (Math.floor(x / 12) + k * 5) % N;
+      if (a === b) b = (b + 1) % N;
+      pairs.push([a, b]);
+      x = (Math.imul(x, 1103515245) + 12345) >>> 0;
+    }
+    let desired = 0;
+    for (let i = 0; i < N; i++) {
+      const c = reduced.charCodeAt(i % reduced.length);
+      if ((c + (h >>> i)) & 1) desired |= (1 << i);
+    }
+    return { phrase, reduced, raw, hash: h, thetas, phis, pairs, desired };
+  }
+
+  function freshState() {
+    const re = new Float64Array(DIM);
+    const im = new Float64Array(DIM);
+    re[0] = 1;
+    return { re, im };
+  }
+  function applyRY(st, q, theta) {
+    const c = Math.cos(theta / 2), s = Math.sin(theta / 2);
+    const bit = 1 << q;
+    const { re, im } = st;
+    for (let i = 0; i < DIM; i++) {
+      if (i & bit) continue;
+      const j = i | bit;
+      const ar = re[i], ai = im[i], br = re[j], bi = im[j];
+      re[i] = c * ar + s * br;
+      im[i] = c * ai + s * bi;
+      re[j] = -s * ar + c * br;
+      im[j] = -s * ai + c * bi;
+    }
+  }
+  function applyRZ(st, q, phi) {
+    const h = phi / 2;
+    const c0 = Math.cos(-h), s0 = Math.sin(-h);
+    const c1 = Math.cos(h), s1 = Math.sin(h);
+    const bit = 1 << q;
+    const { re, im } = st;
+    for (let i = 0; i < DIM; i++) {
+      const cr = (i & bit) ? c1 : c0;
+      const ci = (i & bit) ? s1 : s0;
+      const ar = re[i], ai = im[i];
+      re[i] = ar * cr - ai * ci;
+      im[i] = ar * ci + ai * cr;
+    }
+  }
+  function applyCX(st, c, t) {
+    const cb = 1 << c, tb = 1 << t;
+    const { re, im } = st;
+    for (let i = 0; i < DIM; i++) {
+      if ((i & cb) && !(i & tb)) {
+        const j = i | tb;
+        const tr = re[i], ti = im[i];
+        re[i] = re[j]; im[i] = im[j];
+        re[j] = tr; im[j] = ti;
+      }
+    }
+  }
+  function prepare(spec) {
+    const st = freshState();
+    for (let q = 0; q < N; q++) {
+      applyRY(st, q, spec.thetas[q]);
+      applyRZ(st, q, spec.phis[q]);
+    }
+    for (const [a, b] of spec.pairs) applyCX(st, a, b);
+    return st;
+  }
+  function probs(st) {
+    const p = new Float64Array(DIM);
+    for (let i = 0; i < DIM; i++) p[i] = st.re[i] * st.re[i] + st.im[i] * st.im[i];
+    return p;
+  }
+  function shannon(x) {
+    if (x <= 0 || x >= 1) return 0;
+    return -(x * Math.log2(x) + (1 - x) * Math.log2(1 - x));
+  }
+  function linearEntropy(st) {
+    const cut = 6, dimA = 1 << cut, dimB = 1 << (N - cut);
+    const rhoRe = new Float64Array(dimA * dimA);
+    const rhoIm = new Float64Array(dimA * dimA);
+    const { re, im } = st;
+    for (let i = 0; i < dimA; i++) {
+      for (let j = 0; j <= i; j++) {
+        let sr = 0, si = 0;
+        const io = i * dimB, jo = j * dimB;
+        for (let k = 0; k < dimB; k++) {
+          const ar = re[io + k], ai = im[io + k];
+          const br = re[jo + k], bi = im[jo + k];
+          sr += ar * br + ai * bi;
+          si += ai * br - ar * bi;
+        }
+        rhoRe[i * dimA + j] = sr; rhoIm[i * dimA + j] = si;
+        rhoRe[j * dimA + i] = sr; rhoIm[j * dimA + i] = -si;
+      }
+    }
+    let tr2 = 0;
+    for (let i = 0; i < dimA * dimA; i++) tr2 += rhoRe[i] * rhoRe[i] + rhoIm[i] * rhoIm[i];
+    return 1 - tr2;
+  }
+  function correlator(st, qA, qB, thA, thB) {
+    const ca = Math.cos(thA), sa = Math.sin(thA);
+    const cb = Math.cos(thB), sb = Math.sin(thB);
+    const bA = 1 << qA, bB = 1 << qB;
+    const { re, im } = st;
+    let ZZ = 0, XX = 0, ZX = 0, XZ = 0;
+    for (let i = 0; i < DIM; i++) {
+      const p = re[i] * re[i] + im[i] * im[i];
+      const za = (i & bA) ? -1 : 1;
+      const zb = (i & bB) ? -1 : 1;
+      ZZ += p * za * zb;
+      const j = i ^ bA ^ bB;
+      XX += re[i] * re[j] + im[i] * im[j];
+      const k = i ^ bB;
+      ZX += (re[i] * re[k] + im[i] * im[k]) * za;
+      const l = i ^ bA;
+      XZ += (re[i] * re[l] + im[i] * im[l]) * zb;
+    }
+    return ca * cb * ZZ + ca * sb * ZX + sa * cb * XZ + sa * sb * XX;
+  }
+  function chsh(st, a, b) {
+    const E00 = correlator(st, a, b, 0, Math.PI / 4);
+    const E01 = correlator(st, a, b, 0, -Math.PI / 4);
+    const E10 = correlator(st, a, b, Math.PI / 2, Math.PI / 4);
+    const E11 = correlator(st, a, b, Math.PI / 2, -Math.PI / 4);
+    return { S: E00 + E01 + E10 - E11, E00, E01, E10, E11, a, b };
+  }
+  function cloneState(st) {
+    return { re: Float64Array.from(st.re), im: Float64Array.from(st.im) };
+  }
+  function oracle(st, target) {
+    st.re[target] *= -1;
+    st.im[target] *= -1;
+  }
+  function reflectAbout(st, psi0) {
+    let cr = 0, ci = 0;
+    for (let i = 0; i < DIM; i++) {
+      cr += psi0.re[i] * st.re[i] + psi0.im[i] * st.im[i];
+      ci += psi0.re[i] * st.im[i] - psi0.im[i] * st.re[i];
+    }
+    for (let i = 0; i < DIM; i++) {
+      const nr = 2 * (cr * psi0.re[i] - ci * psi0.im[i]) - st.re[i];
+      const ni = 2 * (cr * psi0.im[i] + ci * psi0.re[i]) - st.im[i];
+      st.re[i] = nr; st.im[i] = ni;
+    }
+  }
+  function sample(p, rng) {
+    let r = rng();
+    for (let i = 0; i < DIM; i++) {
+      r -= p[i];
+      if (r <= 0) return i;
+    }
+    return DIM - 1;
+  }
+  function bitsOf(idx) {
+    let s = "";
+    for (let q = 0; q < N; q++) s += (idx >> q) & 1 ? "1" : "0";
+    return s;
+  }
+  function mulberry(seed) {
+    let a = seed >>> 0;
+    return function () {
+      a = (a + 0x6D2B79F5) >>> 0;
+      let t = a;
+      t = Math.imul(t ^ (t >>> 15), t | 1);
+      t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+  function histogram(p, seed, shots) {
+    const rng = mulberry(seed);
+    const counts = new Map();
+    for (let s = 0; s < shots; s++) {
+      const i = sample(p, rng);
+      counts.set(i, (counts.get(i) || 0) + 1);
+    }
+    const top = [...counts.entries()].sort((a, b) => b[1] - a[1]);
+    return { counts, winner: top[0][0], top: top.slice(0, 8) };
+  }
+  function nearestSolf(hz) {
+    let best = SOLF[0], d = Math.abs(Math.log(hz / SOLF[0]));
+    for (const f of SOLF) {
+      // compare across octaves
+      const k = Math.round(Math.log2(Math.max(hz, 1) / f));
+      const cand = f * Math.pow(2, k);
+      if (cand < 40 || cand > 2000) continue;
+      const dd = Math.abs(Math.log(hz / cand));
+      if (dd < d) { d = dd; best = cand; }
+    }
+    return best;
+  }
+
+  function verts() {
+    const v = [];
+    for (let i = 0; i < N; i++) {
+      const a = (2 * Math.PI * i) / N - Math.PI / 2;
+      v.push([Math.cos(a), Math.sin(a)]);
+    }
+    return v;
+  }
+  function innerPoly(reduced) {
+    const k = Math.max(3, reduced.length);
+    const v = [];
+    for (let i = 0; i < k; i++) {
+      const a = (2 * Math.PI * i) / k - Math.PI / 2;
+      v.push([0.62 * Math.cos(a), 0.62 * Math.sin(a)]);
+    }
+    return v;
+  }
+
+  const audio = { ctx: null, master: null, merger: null, drones: [], muted: true, fund: 55, beat: 6 };
+  function ensureAudio() {
+    if (audio.ctx) return audio.ctx;
+    const Ctx = window.AudioContext || window.webkitAudioContext;
+    const ctx = new Ctx();
+    const master = ctx.createGain();
+    master.gain.value = 0.0;
+    master.connect(ctx.destination);
+    audio.ctx = ctx;
+    audio.master = master;
+    return ctx;
+  }
+  function stopDrones() {
+    for (const d of audio.drones) {
+      try { d.g.gain.exponentialRampToValueAtTime(0.0001, audio.ctx.currentTime + 0.15); } catch (e) {}
+      setTimeout(() => { try { d.o.stop(); } catch (e) {} }, 200);
+    }
+    audio.drones = [];
+  }
+  function startDrones(fund, spectrum) {
+    const ctx = ensureAudio();
+    stopDrones();
+    audio.fund = fund;
+    audio.beat = 4 + (state.spec ? (state.spec.hash % 9) : 0);
+    function tone(freq, gain, pan, type) {
+      const o = ctx.createOscillator();
+      const g = ctx.createGain();
+      const p = ctx.createStereoPanner();
+      o.type = type || "sine";
+      o.frequency.value = freq;
+      g.gain.value = 0.0001;
+      p.pan.value = pan;
+      o.connect(g); g.connect(p); p.connect(audio.master);
+      o.start();
+      g.gain.exponentialRampToValueAtTime(gain, ctx.currentTime + 0.45);
+      audio.drones.push({ o, g });
+    }
+    // binaural pair around the fundamental (or a mid Solfeggio neighbour)
+    const base = nearestSolf(fund);
+    tone(base, 0.07, -1, "sine");
+    tone(base + audio.beat, 0.07, 1, "sine");
+    const used = new Set();
+    (spectrum || []).slice(0, 4).forEach((s, i) => {
+      let f = nearestSolf(s.hz);
+      while (used.has(f) && f < 2000) f *= 2;
+      used.add(f);
+      tone(f, 0.028 + 0.05 * Math.sqrt(s.p || 0.1), i % 2 ? -0.4 : 0.4, i ? "triangle" : "sine");
+    });
+    if (!audio.muted) audio.master.gain.linearRampToValueAtTime(0.7, ctx.currentTime + 0.2);
+  }
+  function chime(fund, spectrum) {
+    const ctx = ensureAudio();
+    spectrum.forEach((s, i) => {
+      const o = ctx.createOscillator();
+      const g = ctx.createGain();
+      o.type = "sine";
+      o.frequency.value = nearestSolf(fund * (i + 1));
+      g.gain.value = 0.0001;
+      o.connect(g); g.connect(audio.master);
+      const t0 = ctx.currentTime + i * 0.06;
+      o.start(t0);
+      g.gain.exponentialRampToValueAtTime(0.18 * Math.sqrt(s.p), t0 + 0.02);
+      g.gain.exponentialRampToValueAtTime(0.0001, t0 + 1.4);
+      o.stop(t0 + 1.5);
+    });
+  }
+  function setMuted(m) {
+    audio.muted = m;
+    document.getElementById("mute").textContent = m ? "Sound off" : "Sound on";
+    document.getElementById("mute").classList.toggle("on", !m);
+    if (!audio.ctx) return;
+    audio.master.gain.linearRampToValueAtTime(m ? 0.0001 : 0.7, audio.ctx.currentTime + 0.12);
+  }
+
+  const canvas = document.getElementById("sigil");
+  const canvas3d = document.getElementById("sigil3d");
+  const specCanvas = document.getElementById("spec");
+  const flashEl = document.getElementById("flash");
+  let state = {
+    spec: null, st: null, p: null, hist: null, linS: 0, mode: "weave",
+    tCast: 0, fund: 55, spectrum: [], chsh: null, pDesired: 0, ampIters: 0,
+    psi0: null, view3d: true
+  };
+  const cam = { ax: 0.4, ay: 0.7, dragging: false, lx: 0, ly: 0 };
+
+  function resize() {
+    const r = canvas.parentElement.getBoundingClientRect();
+    const dpr = Math.min(2, window.devicePixelRatio || 1);
+    canvas.width = Math.floor(r.width * dpr);
+    canvas.height = Math.floor(r.height * dpr);
+    canvas3d.width = canvas.width;
+    canvas3d.height = canvas.height;
+    if (three.ok) three.resize();
+  }
+  window.addEventListener("resize", resize);
+
+  function chladni(ctx, cx, cy, R, spec, hist, t, alpha) {
+    if (!hist) return;
+    const n = 96;
+    const img = ctx.createImageData(n, n);
+    const top = hist.top;
+    for (let y = 0; y < n; y++) {
+      for (let x = 0; x < n; x++) {
+        const u = x / (n - 1), v = y / (n - 1);
+        const X = u * 2 - 1, Y = v * 2 - 1;
+        let z = 0;
+        for (let i = 0; i < Math.min(6, top.length); i++) {
+          const bits = bitsOf(top[i][0]);
+          const nn = 1 + parseInt(bits.slice(0, 4), 2) % 7;
+          const mm = 1 + parseInt(bits.slice(4, 8), 2) % 7;
+          const w = top[i][1] / 1024;
+          z += w * Math.sin(nn * Math.PI * u) * Math.sin(mm * Math.PI * v);
+        }
+        const k = 3 + (spec.hash % 5);
+        const rad = Math.hypot(X, Y);
+        const th = Math.atan2(Y, X);
+        z += 0.25 * Math.cos(k * th + t * 0.4) * Math.exp(-rad * rad * 1.8);
+        const mag = Math.min(1, Math.abs(z) * 3);
+        const nodal = Math.abs(z) < 0.04 ? 1 : 0;
+        const o = (y * n + x) * 4;
+        img.data[o] = Math.floor(20 + mag * 180 + nodal * 80);
+        img.data[o + 1] = Math.floor(8 + mag * 40 + nodal * 160);
+        img.data[o + 2] = Math.floor(24 + mag * 60 + nodal * 40);
+        img.data[o + 3] = Math.floor(220 * alpha * (0.25 + 0.75 * mag + nodal * 0.4));
+      }
+    }
+    const off = document.createElement("canvas");
+    off.width = n; off.height = n;
+    off.getContext("2d").putImageData(img, 0, 0);
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(cx, cy, R * 1.15, 0, Math.PI * 2);
+    ctx.clip();
+    ctx.globalAlpha = 1;
+    ctx.drawImage(off, cx - R * 1.15, cy - R * 1.15, R * 2.3, R * 2.3);
+    ctx.restore();
+  }
+  function strokeSeg(ctx, cx, cy, R, p, q, color, width, alpha) {
+    ctx.strokeStyle = color;
+    ctx.lineWidth = width;
+    ctx.globalAlpha = alpha;
+    ctx.beginPath();
+    ctx.moveTo(cx + p[0] * R, cy + p[1] * R);
+    ctx.lineTo(cx + q[0] * R, cy + q[1] * R);
+    ctx.stroke();
+  }
+  function drawSigil(t) {
+    const ctx = canvas.getContext("2d");
+    const w = canvas.width, h = canvas.height;
+    ctx.clearRect(0, 0, w, h);
+    const cx = w / 2, cy = h / 2;
+    const R = Math.min(w, h) * 0.36;
+    const spec = state.spec;
+    if (!spec) return;
+    const weave = state.mode === "weave" ? 1 : Math.max(0.25, 1 - state.tCast);
+    const lock = state.mode === "collapse" ? Math.min(1, state.tCast) : 0;
+    chladni(ctx, cx, cy, R, spec, state.hist, t, 0.45 + 0.35 * weave);
+    ctx.globalAlpha = 0.85;
+    ctx.strokeStyle = "#d4af37";
+    ctx.lineWidth = Math.max(1.2, R * 0.012);
+    ctx.beginPath();
+    ctx.arc(cx, cy, R, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.strokeStyle = "#00e5ff";
+    ctx.lineWidth = Math.max(0.7, R * 0.006);
+    ctx.globalAlpha = 0.45 + 0.3 * lock;
+    ctx.beginPath();
+    ctx.arc(cx, cy, R * 0.62, 0, Math.PI * 2);
+    ctx.stroke();
+    const V = verts();
+    const pulse = 0.45 + 0.35 * Math.sin(t * 1.3);
+    for (const [a, b] of spec.pairs) {
+      strokeSeg(ctx, cx, cy, R, V[a], V[b], "#00e5ff", Math.max(0.8, R * 0.007),
+        (state.mode === "weave" ? pulse : 0.35) * 0.8);
+    }
+    const inn = innerPoly(spec.reduced);
+    ctx.strokeStyle = "#ff4fd8";
+    ctx.lineWidth = Math.max(0.9, R * 0.008);
+    ctx.globalAlpha = 0.35 + 0.5 * lock;
+    ctx.beginPath();
+    inn.forEach((p, i) => {
+      const x = cx + p[0] * R, y = cy + p[1] * R;
+      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    });
+    ctx.closePath();
+    ctx.stroke();
+    ctx.globalAlpha = 0.2 + 0.35 * lock;
+    for (let i = 0; i < inn.length; i++) {
+      const p = inn[i], q = inn[(i + 2) % inn.length];
+      strokeSeg(ctx, cx, cy, R, p, q, "#ff4fd8", Math.max(0.6, R * 0.005), ctx.globalAlpha);
+    }
+    if (state.hist) {
+      const bits = bitsOf(state.hist.winner);
+      const ones = [];
+      for (let i = 0; i < N; i++) if (bits[i] === "1") ones.push(i);
+      if (ones.length >= 2) {
+        ctx.strokeStyle = "#f0d78c";
+        ctx.lineWidth = Math.max(1.6, R * 0.014);
+        ctx.globalAlpha = 0.15 + 0.85 * lock;
+        ctx.shadowColor = "#f0d78c";
+        ctx.shadowBlur = 12 * lock;
+        ctx.beginPath();
+        ones.forEach((idx, k) => {
+          const p = V[idx];
+          const x = cx + p[0] * R, y = cy + p[1] * R;
+          if (k === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+        });
+        ctx.closePath();
+        ctx.stroke();
+        ctx.shadowBlur = 0;
+      }
+    }
+    ctx.globalAlpha = 1;
+    V.forEach((p, i) => {
+      const bitOn = state.hist && bitsOf(state.hist.winner)[i] === "1";
+      ctx.fillStyle = bitOn && lock > 0.4 ? "#f0d78c" : "#c9b896";
+      ctx.beginPath();
+      ctx.arc(cx + p[0] * R, cy + p[1] * R, (bitOn ? 4.2 : 3) * (canvas.width / 900), 0, Math.PI * 2);
+      ctx.fill();
+    });
+    ctx.globalAlpha = 0.7;
+    ctx.fillStyle = "#f3e6c4";
+    ctx.font = `${Math.max(11, R * 0.055)}px Palatino, Didot, serif`;
+    ctx.textAlign = "center";
+    ctx.fillText(spec.reduced.toUpperCase(), cx, cy + R * 1.28);
+    if (state.chsh) {
+      const S = state.chsh.S;
+      ctx.fillStyle = Math.abs(S) > 2 ? "#00e5ff" : "#8a7a64";
+      ctx.font = `${Math.max(10, R * 0.04)}px ui-monospace, Menlo, monospace`;
+      ctx.fillText("CHSH  S = " + S.toFixed(3) + (Math.abs(S) > 2 ? "  (violation)" : ""), cx, cy + R * 1.42);
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  function rot3(v, ax, ay) {
+    let x = v[0], y = v[1], z = v[2];
+    const cy = Math.cos(ay), sy = Math.sin(ay);
+    let x1 = x * cy + z * sy, z1 = -x * sy + z * cy;
+    const cx = Math.cos(ax), sx = Math.sin(ax);
+    const y2 = y * cx - z1 * sx, z2 = y * sx + z1 * cx;
+    return [x1, y2, z2];
+  }
+  function proj(v, cx, cy, R) {
+    const z = v[2] + 2.4;
+    return [cx + v[0] / z * R * 2.2, cy + v[1] / z * R * 2.2, z];
+  }
+  function draw3d(t) {
+    const ctx = canvas3d.getContext("2d");
+    const w = canvas3d.width, h = canvas3d.height;
+    ctx.clearRect(0, 0, w, h);
+    const spec = state.spec;
+    if (!spec) return;
+    const cx = w / 2, cy = h / 2;
+    const R = Math.min(w, h) * 0.28;
+    const lock = state.mode === "collapse" ? Math.min(1, state.tCast) : 0;
+    const ay = cam.ay + t * 0.18;
+    const ax = cam.ax;
+    const P = ICO.map(v => proj(rot3(v, ax, ay), cx, cy, R));
+    // faint field
+    ctx.fillStyle = "rgba(10,8,16,0.0)";
+    ctx.strokeStyle = "#d4af37";
+    ctx.globalAlpha = 0.25;
+    ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.arc(cx, cy, R * 1.35, 0, Math.PI * 2); ctx.stroke();
+    const pulse = 0.45 + 0.35 * Math.sin(t * 1.3);
+    // entanglement
+    for (const [a, b] of spec.pairs) {
+      ctx.strokeStyle = "#00e5ff";
+      ctx.globalAlpha = (state.mode === "weave" ? pulse : 0.4) * 0.85;
+      ctx.lineWidth = Math.max(1, 2.2 * (canvas3d.width / 900));
+      ctx.beginPath();
+      ctx.moveTo(P[a][0], P[a][1]);
+      ctx.lineTo(P[b][0], P[b][1]);
+      ctx.stroke();
+    }
+    // icosa edges lightly (adjacent-ish: connect nearest 5)
+    ctx.strokeStyle = "#3a3328";
+    ctx.globalAlpha = 0.7;
+    ctx.lineWidth = 1;
+    for (let i = 0; i < 12; i++) {
+      const d = ICO.map((v, j) => [j, (i === j) ? 9 : Math.hypot(v[0]-ICO[i][0], v[1]-ICO[i][1], v[2]-ICO[i][2])]);
+      d.sort((a, b) => a[1] - b[1]);
+      for (let k = 1; k <= 5; k++) {
+        const j = d[k][0];
+        if (j < i) continue;
+        ctx.beginPath();
+        ctx.moveTo(P[i][0], P[i][1]);
+        ctx.lineTo(P[j][0], P[j][1]);
+        ctx.stroke();
+      }
+    }
+    if (state.hist) {
+      const bits = bitsOf(state.hist.winner);
+      const ones = [];
+      for (let i = 0; i < N; i++) if (bits[i] === "1") ones.push(i);
+      if (ones.length >= 2) {
+        ctx.strokeStyle = "#f0d78c";
+        ctx.lineWidth = Math.max(1.8, 3 * (canvas3d.width / 900));
+        ctx.globalAlpha = 0.2 + 0.8 * lock;
+        ctx.shadowColor = "#f0d78c";
+        ctx.shadowBlur = 16 * lock;
+        ctx.beginPath();
+        ones.forEach((idx, k) => {
+          if (k === 0) ctx.moveTo(P[idx][0], P[idx][1]);
+          else ctx.lineTo(P[idx][0], P[idx][1]);
+        });
+        ctx.closePath();
+        ctx.stroke();
+        ctx.shadowBlur = 0;
+      }
+    }
+    P.forEach((p, i) => {
+      const bitOn = state.hist && bitsOf(state.hist.winner)[i] === "1";
+      const depth = 1.2 / p[2];
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = bitOn && lock > 0.4 ? "#f0d78c" : "#c9b896";
+      ctx.beginPath();
+      ctx.arc(p[0], p[1], (bitOn ? 6 : 4) * depth * (canvas3d.width / 900), 0, Math.PI * 2);
+      ctx.fill();
+    });
+    ctx.globalAlpha = 0.85;
+    ctx.fillStyle = "#f3e6c4";
+    ctx.font = `${Math.max(12, R * 0.08)}px Palatino, Didot, serif`;
+    ctx.textAlign = "center";
+    ctx.fillText(spec.reduced.toUpperCase(), cx, cy + R * 1.7);
+    if (state.chsh) {
+      const S = state.chsh.S;
+      ctx.fillStyle = Math.abs(S) > 2 ? "#00e5ff" : "#8a7a64";
+      ctx.font = `${Math.max(10, R * 0.06)}px ui-monospace, Menlo, monospace`;
+      ctx.fillText("CHSH  S = " + S.toFixed(3) + (Math.abs(S) > 2 ? "  (violation)" : ""), cx, cy + R * 1.88);
+    }
+  }
+
+
+  // --- shareable URL (#i=phrase&cast=1&amp=2&view=3d) ---
+  function parseHash() {
+    try {
+      const raw = (location.hash || "").replace(/^#/, "");
+      if (!raw) return null;
+      if (raw.includes("=") || raw.includes("&")) {
+        const p = new URLSearchParams(raw);
+        return {
+          phrase: p.get("i") || p.get("intent") || "",
+          cast: p.get("cast") === "1",
+          amp: Math.max(0, parseInt(p.get("amp") || "0", 10) || 0),
+          view: p.get("view")
+        };
+      }
+      return { phrase: decodeURIComponent(raw.replace(/[+#]/g, " ")), cast: false, amp: 0, view: null };
+    } catch (e) { return null; }
+  }
+  function writeHash() {
+    if (!state.spec) return;
+    const p = new URLSearchParams();
+    p.set("i", state.spec.phrase);
+    if (state.mode === "collapse") p.set("cast", "1");
+    if (state.ampIters) p.set("amp", String(state.ampIters));
+    p.set("view", state.view3d ? "3d" : "2d");
+    const next = "#" + p.toString();
+    if (location.hash !== next) {
+      try { history.replaceState(null, "", next); }
+      catch (e) { location.hash = p.toString(); }
+    }
+  }
+  function copyLink() {
+    writeHash();
+    const url = location.href;
+    const btn = document.getElementById("copyLink");
+    const ok = function () {
+      if (!btn) return;
+      const old = btn.textContent;
+      btn.textContent = "Copied";
+      setTimeout(function () { btn.textContent = old; }, 1200);
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(url).then(ok).catch(function () { prompt("Copy this sigil link:", url); });
+    } else {
+      prompt("Copy this sigil link:", url);
+    }
+  }
+
+  // --- Three.js glowing mesh + particles (local vendor; canvas 3-D fallback) ---
+  const three = { ok: false };
+  function glowTex() {
+    const c = document.createElement("canvas");
+    c.width = 64; c.height = 64;
+    const g = c.getContext("2d");
+    const grd = g.createRadialGradient(32, 32, 0, 32, 32, 32);
+    grd.addColorStop(0, "rgba(255,255,255,1)");
+    grd.addColorStop(0.25, "rgba(255,230,180,0.7)");
+    grd.addColorStop(0.55, "rgba(200,160,60,0.18)");
+    grd.addColorStop(1, "rgba(0,0,0,0)");
+    g.fillStyle = grd; g.fillRect(0, 0, 64, 64);
+    const tex = new THREE.CanvasTexture(c);
+    tex.needsUpdate = true;
+    return tex;
+  }
+  function initThree() {
+    if (!window.THREE) return false;
+    try {
+      const renderer = new THREE.WebGLRenderer({
+        canvas: canvas3d, antialias: true, alpha: false, preserveDrawingBuffer: true
+      });
+      renderer.setClearColor(0x07060a, 1);
+      renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
+      const scene = new THREE.Scene();
+      scene.fog = new THREE.FogExp2(0x07060a, 0.10);
+      const camera = new THREE.PerspectiveCamera(36, 1, 0.1, 40);
+      camera.position.set(0, 0.2, 5.6);
+      const group = new THREE.Group();
+      scene.add(group);
+      scene.add(new THREE.AmbientLight(0x3a2a18, 0.7));
+      const key = new THREE.PointLight(0xf0d78c, 1.4, 14);
+      key.position.set(2.4, 2.1, 3.2);
+      scene.add(key);
+      const fill = new THREE.PointLight(0x00e5ff, 0.85, 12);
+      fill.position.set(-2.6, -1.1, 2.2);
+      scene.add(fill);
+      const tex = glowTex();
+      const ico = new THREE.IcosahedronGeometry(1.55, 0);
+      group.add(new THREE.Mesh(ico, new THREE.MeshBasicMaterial({
+        color: 0xd4af37, wireframe: true, transparent: true, opacity: 0.32
+      })));
+      group.add(new THREE.Mesh(new THREE.IcosahedronGeometry(1.50, 0), new THREE.MeshPhongMaterial({
+        color: 0x1a1024, emissive: 0x3a2410, emissiveIntensity: 0.35,
+        transparent: true, opacity: 0.28, side: THREE.DoubleSide, shininess: 40
+      })));
+      const scale = 1.55;
+      const vpos = ICO.map(v => new THREE.Vector3(v[0] * scale, v[1] * scale, v[2] * scale));
+      const vgeo = new THREE.BufferGeometry().setFromPoints(vpos);
+      const vpoints = new THREE.Points(vgeo, new THREE.PointsMaterial({
+        size: 0.24, map: tex, transparent: true, depthWrite: false,
+        blending: THREE.AdditiveBlending, color: 0xf0d78c
+      }));
+      group.add(vpoints);
+      const nDust = 1000;
+      const dustPos = new Float32Array(nDust * 3);
+      const dustCol = new Float32Array(nDust * 3);
+      const dustVel = new Float32Array(nDust * 3);
+      for (let i = 0; i < nDust; i++) {
+        const r = 1.05 + Math.random() * 1.7;
+        const th = Math.random() * Math.PI * 2, ph = Math.acos(2 * Math.random() - 1);
+        dustPos[i*3] = r * Math.sin(ph) * Math.cos(th);
+        dustPos[i*3+1] = r * Math.sin(ph) * Math.sin(th);
+        dustPos[i*3+2] = r * Math.cos(ph);
+        const gold = Math.random() > 0.42;
+        dustCol[i*3] = gold ? 0.94 : 0.0;
+        dustCol[i*3+1] = gold ? 0.84 : 0.90;
+        dustCol[i*3+2] = gold ? 0.42 : 0.95;
+        dustVel[i*3] = (Math.random() - 0.5) * 0.004;
+        dustVel[i*3+1] = (Math.random() - 0.5) * 0.004;
+        dustVel[i*3+2] = (Math.random() - 0.5) * 0.004;
+      }
+      const dgeo = new THREE.BufferGeometry();
+      dgeo.setAttribute("position", new THREE.BufferAttribute(dustPos, 3));
+      dgeo.setAttribute("color", new THREE.BufferAttribute(dustCol, 3));
+      const dust = new THREE.Points(dgeo, new THREE.PointsMaterial({
+        size: 0.048, map: tex, transparent: true, depthWrite: false,
+        blending: THREE.AdditiveBlending, vertexColors: true, opacity: 0.9
+      }));
+      group.add(dust);
+      three.ok = true;
+      three.renderer = renderer; three.scene = scene; three.camera = camera;
+      three.group = group; three.vpoints = vpoints; three.vpos = vpos;
+      three.dust = dust; three.dustPos = dustPos; three.dustVel = dustVel;
+      three.entLines = null; three.starLines = null;
+      three.resize = function () {
+        const w = canvas3d.width, h = canvas3d.height;
+        renderer.setSize(w, h, false);
+        camera.aspect = w / Math.max(1, h);
+        camera.updateProjectionMatrix();
+      };
+      three.resize();
+      return true;
+    } catch (e) {
+      console.warn("Three.js init failed, using canvas 3-D", e);
+      three.ok = false;
+      return false;
+    }
+  }
+  function rebuildThreeLines() {
+    if (!three.ok || !state.spec) return;
+    if (three.entLines) { three.group.remove(three.entLines); three.entLines.geometry.dispose(); three.entLines = null; }
+    if (three.starLines) { three.group.remove(three.starLines); three.starLines.geometry.dispose(); three.starLines = null; }
+    const pts = [];
+    for (const pair of state.spec.pairs) pts.push(three.vpos[pair[0]], three.vpos[pair[1]]);
+    const geo = new THREE.BufferGeometry().setFromPoints(pts);
+    three.entLines = new THREE.LineSegments(geo, new THREE.LineBasicMaterial({
+      color: 0x00e5ff, transparent: true, opacity: 0.75
+    }));
+    three.group.add(three.entLines);
+    if (state.hist) {
+      const bits = bitsOf(state.hist.winner);
+      const ones = [];
+      for (let i = 0; i < N; i++) if (bits[i] === "1") ones.push(i);
+      if (ones.length >= 2) {
+        const sp = [];
+        for (let k = 0; k < ones.length; k++) {
+          sp.push(three.vpos[ones[k]], three.vpos[ones[(k + 1) % ones.length]]);
+        }
+        three.starLines = new THREE.LineSegments(
+          new THREE.BufferGeometry().setFromPoints(sp),
+          new THREE.LineBasicMaterial({ color: 0xf0d78c, transparent: true, opacity: 0.95 })
+        );
+        three.group.add(three.starLines);
+      }
+    }
+  }
+  function renderThree(t) {
+    if (!three.ok) return;
+    three.group.rotation.y = cam.ay + t * 0.18;
+    three.group.rotation.x = cam.ax * 0.85;
+    const lock = state.mode === "collapse" ? Math.min(1, state.tCast) : 0;
+    const pulse = 0.45 + 0.35 * Math.sin(t * 1.3);
+    if (three.entLines) three.entLines.material.opacity = (state.mode === "weave" ? pulse : 0.4) * 0.85;
+    if (three.starLines) three.starLines.material.opacity = 0.25 + 0.75 * lock;
+    if (three.vpoints) three.vpoints.material.size = 0.18 + 0.16 * lock + 0.04 * Math.sin(t * 3);
+    const pos = three.dustPos, vel = three.dustVel;
+    for (let i = 0; i < pos.length / 3; i++) {
+      const i3 = i * 3;
+      pos[i3] += vel[i3]; pos[i3+1] += vel[i3+1]; pos[i3+2] += vel[i3+2];
+      const x = pos[i3], z = pos[i3+2];
+      const a = 0.003 + 0.004 * lock;
+      pos[i3] = x * Math.cos(a) - z * Math.sin(a);
+      pos[i3+2] = x * Math.sin(a) + z * Math.cos(a);
+    }
+    three.dust.geometry.attributes.position.needsUpdate = true;
+    three.resize();
+    three.renderer.render(three.scene, three.camera);
+  }
+
+
+  function setView3d(on) {
+    state.view3d = on;
+    canvas.style.display = on ? "none" : "block";
+    canvas3d.style.display = on ? "block" : "none";
+    document.getElementById("view3d").textContent = on ? "3D on" : "2D on";
+    document.getElementById("view3d").classList.toggle("on", on);
+    writeHash();
+  }
+
+  function drawSpectrum() {
+    const c = specCanvas.getContext("2d");
+    const w = specCanvas.width, h = specCanvas.height;
+    c.clearRect(0, 0, w, h);
+    const specs = state.spectrum;
+    if (!specs.length) return;
+    const maxP = Math.max(...specs.map(s => s.p), 0.05);
+    const bw = (w - 20) / specs.length;
+    specs.forEach((s, i) => {
+      const bh = (s.p / maxP) * (h - 36) * (state.mode === "collapse" ? Math.min(1, state.tCast + 0.2) : 0.35);
+      const x = 10 + i * bw;
+      c.fillStyle = i === 0 ? "#f0d78c" : "#d4af37";
+      c.globalAlpha = 0.85;
+      c.fillRect(x + 4, h - 20 - bh, bw - 10, bh);
+      c.globalAlpha = 0.7;
+      c.fillStyle = "#8a7a64";
+      c.font = "10px ui-monospace, Menlo, monospace";
+      c.textAlign = "center";
+      c.fillText((s.solf || s.hz).toFixed(0), x + bw / 2, h - 6);
+    });
+    c.globalAlpha = 1;
+  }
+
+  function updateMetrics() {
+    const sp = state.spec;
+    const bits = state.hist ? bitsOf(state.hist.winner) : "—";
+    const shots = state.hist ? state.hist.top[0][1] : 0;
+    const S = state.chsh ? state.chsh.S : 0;
+    const viol = state.chsh && Math.abs(S) > 2;
+    document.getElementById("reduced").textContent = sp ? sp.reduced.toUpperCase() : "";
+    document.getElementById("metrics").innerHTML = `
+      <div><dt>hash</dt><dd>${sp ? sp.hash.toString(16).padStart(8, "0") : "—"}</dd></div>
+      <div><dt>lin. entropy</dt><dd>${state.linS.toFixed(3)}  (6|6 cut)</dd></div>
+      <div><dt>CHSH S</dt><dd class="${viol ? "violate" : ""}">${state.chsh ? S.toFixed(3) : "—"} ${viol ? "violation" : "|S|≤2 class."} · q${state.chsh ? state.chsh.a + "," + state.chsh.b : ""}</dd></div>
+      <div><dt>desired</dt><dd>${sp ? bitsOf(sp.desired) : "—"}</dd></div>
+      <div><dt>P(desired)</dt><dd>${state.pDesired.toFixed(4)}  ·  ${state.ampIters} Grover iter</dd></div>
+      <div><dt>winner</dt><dd>${bits}</dd></div>
+      <div><dt>shots</dt><dd>${shots}/1024</dd></div>
+      <div><dt>mode</dt><dd>${state.mode}</dd></div>`;
+    document.getElementById("fund").textContent =
+      `fundamental  ${state.fund.toFixed(1)} Hz   ·   binaural Δ ${audio.beat.toFixed(1)} Hz`;
+  }
+
+  function refreshFromState(keepMode) {
+    const p = probs(state.st);
+    const hist = histogram(p, state.spec.hash + state.ampIters * 17, 1024);
+    const linS = linearEntropy(state.st);
+    const pair = state.spec.pairs[0] || [0, 1];
+    const C = chsh(state.st, pair[0], pair[1]);
+    const fund = 55 * Math.pow(2, (state.spec.hash % 24) / 12);
+    const spectrum = hist.top.map((kv, i) => {
+      const hz = fund * (i + 1);
+      return { bits: bitsOf(kv[0]), p: kv[1] / 1024, hz, solf: nearestSolf(hz) };
+    });
+    const pDesired = p[state.spec.desired];
+    const mode = keepMode ? state.mode : "weave";
+    const tCast = keepMode ? state.tCast : 0;
+    state = Object.assign(state, { p, hist, linS, chsh: C, fund, spectrum, pDesired, mode, tCast });
+    updateMetrics();
+    rebuildThreeLines();
+    writeHash();
+  }
+
+  function rebuild(phrase, opts) {
+    opts = opts || {};
+    const spec = mapIntention(phrase);
+    const st = prepare(spec);
+    // "Desired" = the mode of this phrase's own state. Amplifying a random
+    // hash bitstring would usually have ~0 overlap and do nothing visible.
+    let desired = 0, mx = -1;
+    const p0 = probs(st);
+    for (let i = 0; i < DIM; i++) if (p0[i] > mx) { mx = p0[i]; desired = i; }
+    spec.desired = desired;
+    state.spec = spec;
+    state.st = st;
+    state.psi0 = cloneState(st);
+    state.ampIters = 0;
+    state.mode = opts.collapse ? "collapse" : "weave";
+    state.tCast = opts.collapse ? 1 : 0;
+    refreshFromState(true);
+    if (AER_SEED && AER_SEED.phrase === spec.phrase && AER_SEED.winner) {
+      document.getElementById("reduced").title = "Aer winner " + AER_SEED.winner;
+    }
+    startDrones(state.fund, state.spectrum);
+    if (opts.chime) chime(state.fund, state.spectrum);
+    document.querySelectorAll(".presets button").forEach(b => {
+      b.classList.toggle("active", b.dataset.phrase === spec.phrase);
+    });
+  }
+
+  function amplifyOnce() {
+    if (!state.st || !state.psi0) return;
+    oracle(state.st, state.spec.desired);
+    reflectAbout(state.st, state.psi0);
+    state.ampIters += 1;
+    refreshFromState(true);
+    chime(state.fund, state.spectrum);
+  }
+
+  function loadGrimoire() {
+    try { return JSON.parse(localStorage.getItem(GRIMOIRE_KEY) || "[]"); }
+    catch (e) { return []; }
+  }
+  function renderGrimoire() {
+    const box = document.getElementById("grimoire");
+    const entries = loadGrimoire();
+    if (!entries.length) {
+      box.innerHTML = "<p class='disclaimer' style='margin:0'>Casts are saved in this browser only.</p>";
+      return;
+    }
+    box.innerHTML = "";
+    entries.forEach((e, i) => {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "entry";
+      const when = new Date(e.t);
+      const label = when.toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+      b.innerHTML = `<div>${e.phrase}</div><div class="when">${label} · S=${Number(e.S).toFixed(2)} · ${e.reduced}</div>`;
+      b.addEventListener("click", () => {
+        document.getElementById("intention").value = e.phrase;
+        rebuild(e.phrase, { collapse: true, chime: true });
+      });
+      box.appendChild(b);
+    });
+  }
+  function saveCast() {
+    if (!state.spec) return;
+    const entries = loadGrimoire();
+    entries.unshift({
+      t: Date.now(),
+      phrase: state.spec.phrase,
+      reduced: state.spec.reduced,
+      hash: state.spec.hash,
+      winner: state.hist ? bitsOf(state.hist.winner) : "",
+      entropy: state.linS,
+      S: state.chsh ? state.chsh.S : 0,
+      pDesired: state.pDesired
+    });
+    try { localStorage.setItem(GRIMOIRE_KEY, JSON.stringify(entries.slice(0, 24))); }
+    catch (e) {}
+    renderGrimoire();
+  }
+
+  function cast() {
+    if (state.mode === "collapse") {
+      rebuild(document.getElementById("intention").value);
+      return;
+    }
+    state.mode = "collapse";
+    state.tCast = 0;
+    flashEl.style.transition = "none";
+    flashEl.style.opacity = "0.55";
+    requestAnimationFrame(() => {
+      flashEl.style.transition = "opacity 0.7s ease";
+      flashEl.style.opacity = "0";
+    });
+    chime(state.fund, state.spectrum);
+    saveCast();
+    updateMetrics();
+  }
+
+  let last = 0;
+  function loop(ts) {
+    const t = ts * 0.001;
+    const dt = Math.min(0.05, (ts - last) / 1000 || 0.016);
+    last = ts;
+    if (state.mode === "collapse") state.tCast = Math.min(1, state.tCast + dt * 0.85);
+    if (state.view3d && three.ok) renderThree(t);
+    else if (state.view3d) draw3d(t);
+    else drawSigil(t);
+    drawSpectrum();
+    requestAnimationFrame(loop);
+  }
+
+  function exportPng() {
+    const src = state.view3d ? canvas3d : canvas;
+    const a = document.createElement("a");
+    a.download = "sigil-" + (state.spec ? state.spec.reduced : "cast") + ".png";
+    a.href = src.toDataURL("image/png");
+    a.click();
+  }
+  function exportSvg() {
+    const spec = state.spec;
+    if (!spec) return;
+    const V = verts();
+    const inn = innerPoly(spec.reduced);
+    const bits = state.hist ? bitsOf(state.hist.winner) : "";
+    const ones = [];
+    for (let i = 0; i < N; i++) if (bits[i] === "1") ones.push(i);
+    function p(v) { return (150 + v[0] * 100).toFixed(2) + "," + (150 + v[1] * 100).toFixed(2); }
+    let dEnt = spec.pairs.map(([a, b]) => `M${p(V[a])} L${p(V[b])}`).join(" ");
+    let dInn = inn.map((v, i) => (i ? "L" : "M") + p(v)).join(" ") + " Z";
+    let dStar = ones.length >= 2 ? ones.map((i, k) => (k ? "L" : "M") + p(V[i])).join(" ") + " Z" : "";
+    const Sline = state.chsh ? `S = ${state.chsh.S.toFixed(3)}` : "";
+    const svg = `<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 340" width="1200" height="1360">
+  <rect width="300" height="340" fill="#07060a"/>
+  <circle cx="150" cy="150" r="100" fill="none" stroke="#d4af37" stroke-width="1.2"/>
+  <circle cx="150" cy="150" r="62" fill="none" stroke="#00e5ff" stroke-width="0.6" opacity="0.6"/>
+  <path d="${dEnt}" fill="none" stroke="#00e5ff" stroke-width="0.7" opacity="0.7"/>
+  <path d="${dInn}" fill="none" stroke="#ff4fd8" stroke-width="0.9"/>
+  ${dStar ? `<path d="${dStar}" fill="none" stroke="#f0d78c" stroke-width="1.6"/>` : ""}
+  ${V.map((v,i) => `<circle cx="${(150+v[0]*100).toFixed(2)}" cy="${(150+v[1]*100).toFixed(2)}" r="${bits[i]==="1"?2.4:1.7}" fill="#f0d78c"/>`).join("")}
+  <text x="150" y="275" text-anchor="middle" fill="#f3e6c4" font-family="Palatino, serif" font-size="14" letter-spacing="4">${spec.reduced.toUpperCase()}</text>
+  <text x="150" y="298" text-anchor="middle" fill="#00e5ff" font-family="ui-monospace, monospace" font-size="7">${Sline}</text>
+  <text x="150" y="322" text-anchor="middle" fill="#8a7a64" font-family="Palatino, serif" font-size="7">Quantum Sigil · simulated 12-qubit circuit · generative art</text>
+</svg>`;
+    const blob = new Blob([svg], { type: "image/svg+xml" });
+    const a = document.createElement("a");
+    a.download = "sigil-" + spec.reduced + ".svg";
+    a.href = URL.createObjectURL(blob);
+    a.click();
+  }
+
+  const input = document.getElementById("intention");
+  const presetBox = document.getElementById("presets");
+  PRESETS.forEach(ph => {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.textContent = ph;
+    b.dataset.phrase = ph;
+    b.addEventListener("click", () => { input.value = ph; rebuild(ph); });
+    presetBox.appendChild(b);
+  });
+  let debounce;
+  input.addEventListener("input", () => {
+    clearTimeout(debounce);
+    debounce = setTimeout(() => rebuild(input.value), 180);
+  });
+  input.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); cast(); } });
+  document.getElementById("cast").addEventListener("click", cast);
+  document.getElementById("amplify").addEventListener("click", amplifyOnce);
+  document.getElementById("view3d").addEventListener("click", () => setView3d(!state.view3d));
+  document.getElementById("mute").addEventListener("click", () => {
+    ensureAudio().resume();
+    setMuted(!audio.muted);
+    if (!audio.muted && !audio.drones.length) startDrones(state.fund, state.spectrum);
+  });
+  document.getElementById("exportPng").addEventListener("click", exportPng);
+  document.getElementById("exportSvg").addEventListener("click", exportSvg);
+
+  canvas3d.addEventListener("pointerdown", e => {
+    cam.dragging = true; cam.lx = e.clientX; cam.ly = e.clientY;
+    canvas3d.setPointerCapture(e.pointerId);
+  });
+  canvas3d.addEventListener("pointermove", e => {
+    if (!cam.dragging) return;
+    cam.ay += (e.clientX - cam.lx) * 0.008;
+    cam.ax += (e.clientY - cam.ly) * 0.008;
+    cam.lx = e.clientX; cam.ly = e.clientY;
+  });
+  canvas3d.addEventListener("pointerup", () => { cam.dragging = false; });
+
+  // Optional Three.js enhancement (CDN). If it loads, we keep the canvas path —
+  // the software / 2-D canvas 3-D already works offline on file://.
+  document.getElementById("copyLink").addEventListener("click", copyLink);
+
+  resize();
+  initThree();
+  const boot = parseHash();
+  const startPhrase = (boot && boot.phrase) ? boot.phrase : input.value;
+  if (boot && boot.phrase) input.value = boot.phrase;
+  rebuild(startPhrase, { collapse: !!(boot && boot.cast), chime: !!(boot && boot.cast) });
+  if (boot && boot.amp) { for (let k = 0; k < Math.min(8, boot.amp); k++) amplifyOnce(); }
+  setMuted(true);
+  setView3d(!(boot && boot.view === "2d"));
+  renderGrimoire();
+  writeHash();
+  window.addEventListener("hashchange", function () {
+    const h = parseHash();
+    if (!h || !h.phrase) return;
+    if (h.phrase === (state.spec && state.spec.phrase) && !!h.cast === (state.mode === "collapse") && (h.amp || 0) === state.ampIters) return;
+    input.value = h.phrase;
+    rebuild(h.phrase, { collapse: h.cast, chime: false });
+    for (let k = 0; k < Math.min(8, h.amp || 0); k++) amplifyOnce();
+    if (h.view === "2d") setView3d(false);
+    else if (h.view === "3d") setView3d(true);
+  });
+  requestAnimationFrame(loop);
+  window.labReady = true;
+})();
+</script>
+</body>
+</html>
