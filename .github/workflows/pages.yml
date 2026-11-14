@@ -29,6 +29,8 @@ jobs:
             curl -L --fail -o vendor/three.min.js https://cdnjs.cloudflare.com/ajax/libs/three.js/r134/three.min.js
           fi
       - uses: actions/configure-pages@v5
+        with:
+          enablement: true
       - uses: actions/upload-pages-artifact@v3
         with:
           path: .
