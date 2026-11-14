@@ -1,0 +1,18 @@
+{
+  "id": "./",
+  "name": "Quantum Puter Lab",
+  "short_name": "Quantum Lab",
+  "description": "A darkroom of honest quantum-circuit experiments and a 12-qubit sigil engine. Simulated mathematics, framed as symbolic art — not supernatural claims.",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#07060a",
+  "theme_color": "#07060a",
+  "lang": "en",
+  "icons": [
+    { "src": "./icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "./icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "./icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

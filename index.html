@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#07060a">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Quantum Lab">
+<meta name="description" content="Quantum Puter Lab — simulated quantum-circuit experiments and a 12-qubit sigil engine. Honest physics, framed as symbolic art.">
+<title>Quantum Puter Lab</title>
+<link rel="manifest" href="./manifest.webmanifest">
+<link rel="apple-touch-icon" href="./icons/apple-touch-icon.png">
+<link rel="icon" type="image/png" sizes="32x32" href="./icons/favicon.png">
+<link rel="icon" type="image/png" sizes="192x192" href="./icons/icon-192.png">
+<link rel="stylesheet" href="./lab/theme.css">
+<link rel="stylesheet" href="./shell.css">
+<script src="./app-pwa.js" defer></script>
+</head>
+<body class="app">
+<div class="grain" aria-hidden="true"></div>
+
+<header class="app-top">
+  <img class="mark" src="./icons/icon-192.png" width="42" height="42" alt="">
+  <div class="brand">
+    <h1>QUANTUM PUTER LAB</h1>
+    <div class="sub">Simulated circuits · honest physics · offline</div>
+  </div>
+</header>
+
+<section id="view-home" class="view">
+  <div class="hero">
+    <h2>A darkroom for wild ideas with honest mathematics.</h2>
+    <p>Each experiment is a self-contained simulation — a classical computer running the real math of quantum circuits, waves, or a driven spin model. The ritual language is a frame for looking. It is not a claim that spells reach the world.</p>
+  </div>
+  <p class="install-hint" id="installHint"><strong>Add to Home Screen</strong> from the share menu (Safari on iPhone, or the install prompt in Chrome) to keep the lab as a standalone app. After one visit it works offline.</p>
+  <div class="panel">
+    <h2>Featured</h2>
+    <div class="grid" id="featured"></div>
+    <h2>All experiments</h2>
+    <div class="grid" id="all-home"></div>
+  </div>
+</section>
+
+<section id="view-labs" class="view" hidden>
+  <div class="hero">
+    <h2>The laboratory</h2>
+    <p>Fifteen browser experiments plus the sigil engine. Open any card; the back link returns here.</p>
+  </div>
+  <div class="panel">
+    <div class="grid" id="all-labs"></div>
+  </div>
+</section>
+
+<section id="view-about" class="view" hidden>
+  <div class="panel about">
+    <h2>What this is</h2>
+    <p>Quantum Puter Lab is a local, installable app built from the Quantum Sigil &amp; Resonance Engine and its laboratory. Everything you see is a classical simulation of cited mathematics, dressed in gold, cyan, and film-grain. It is generative / symbolic art, not a supernatural instrument.</p>
+    <h2>On an iPhone</h2>
+    <ol>
+      <li>Open this site in <strong>Safari</strong>.</li>
+      <li>Tap the share button, then <strong>Add to Home Screen</strong>.</li>
+      <li>The gold icosahedron becomes the app icon. After the first load, the laboratory is cached for offline use.</li>
+    </ol>
+    <p>On a Mac, you can also double-click <code>Quantum Puter Lab.app</code> in <code>~/QuantumPuter/dist/</code> for a chromeless window, or serve this folder on your Wi-Fi with <code>python3 serve.py</code> and open the printed URL on your phone.</p>
+    <h2>Limits</h2>
+    <p>There is no real quantum processor here. Chrome or Safari is required for some WebGL and audio features (the sigil’s Three.js view, cymatics). The service worker caches this origin only. Live Cymatics may ask for a microphone. Light Lab and UFO / Propulsion remain separate Python wings in the original project folder and are not bundled in this app.</p>
+    <p class="honest">Physics pointers: CHSH and Tsirelson’s bound, Grover amplitude amplification, Bennett et al. teleportation with mid-protocol Kraus noise, entanglement swapping (Żukowski et al.), BB84, a small-circuit analogue of Gao–Jafferis–Wall / Google 2022 wormhole teleportation (not a spacetime throat), and Zurek’s quantum Darwinism in a toy model.</p>
+  </div>
+</section>
+
+<nav class="tabbar" role="tablist" aria-label="App sections">
+  <button type="button" data-view="home" aria-selected="true">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 11.5 12 4l8 7.5V20a1 1 0 0 1-1 1h-5v-6H10v6H5a1 1 0 0 1-1-1z"/></svg>
+    Home
+  </button>
+  <button type="button" data-href="./sigil/index.html">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><polygon points="12 3 21 8.5 21 15.5 12 21 3 15.5 3 8.5"/><path d="M12 3v18M3 8.5h18M3 15.5h18"/></svg>
+    Sigil
+  </button>
+  <button type="button" data-view="labs">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+    Labs
+  </button>
+  <button type="button" data-view="about">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5h.01"/></svg>
+    About
+  </button>
+</nav>
+
+<footer class="note">Everything runs on this device as a classical simulation of the cited mathematics. Aesthetic: obsidian, gold, cyan, film-grain — symbolic, not supernatural.</footer>
+
+<script>
+const EXPERIMENTS = [
+  { href:"./sigil/index.html", kicker:"Engine", title:"Quantum Sigil", hook:"Cast an intention into a 12-qubit circuit; a glowing icosahedron of particles collapses; share the sigil as a URL.", phys:"FNV-1a + letter-reduction seed RY/RZ/CNOT; CHSH and Grover from the statevector; Three.js mesh (local vendor, offline). Generative art, not magic.", featured:true },
+  { href:"./lab/tarot/index.html", kicker:"Entangled spread", title:"Quantum Tarot", hook:"A three-card reading dealt from entangled qubits — Past and Future can violate a Bell inequality together.", phys:"A 12-qubit state is sampled; card identities come from measurement bitstrings. CHSH is a correlator, not a prophecy." },
+  { href:"./lab/coven/index.html", kicker:"GHZ network", title:"Ritual Circle", hook:"A coven of qubits shares one GHZ state. One word, every flame agrees — and a Mermin test can violate a Bell bound.", phys:"GHZ |00…0⟩+|11…1⟩. The Mermin operator Re ⟨∏(X+iY)⟩ equals 2^{N−1} against a classical bound 2^{⌊N/2⌋}. No group mind." },
+  { href:"./lab/zeno/index.html", kicker:"Watched pot", title:"Zeno Binding", hook:"A binding spell that actually works in the math: stare at a drifting qubit often enough and it freezes.", phys:"The quantum Zeno effect. Survival follows [cos²(Ωτ/2)]^n. A real quantum effect, simulated here." },
+  { href:"./lab/teleport/index.html", kicker:"Protocol", title:"Astral Teleport", hook:"Send a qubit’s state across the circle — the body stays put. Mid-protocol Kraus noise drops fidelity as 1 − p/2.", phys:"Bennett et al. 1993. After the Bell pair is shared, a depolarizing Kraus channel acts on Bob’s qubit, then the protocol continues. Average F=1−p/2.", featured:true },
+  { href:"./lab/manyworlds/index.html", kicker:"Interpretation", title:"Many-Worlds Decision", hook:"Three choices fork the wavefunction into eight lives. Inhabit one branch; the others stay dim, still weighted.", phys:"A visualization of a branching statevector. Many-worlds is an interpretation, not a result we prove here." },
+  { href:"./lab/cymatics/index.html", kicker:"Resonance", title:"Live Cymatics", hook:"Pour your voice — or a tone — onto a Chladni plate and watch nodal lines bloom in gold sand.", phys:"Microphone FFT (or a fallback oscillator) drives plate modes. Wave physics, not quantum, continuing the resonance aesthetic." },
+  { href:"./lab/eraser/index.html", kicker:"Delayed choice", title:"Quantum Eraser", hook:"Decide, after the photon “has passed the slits,” whether the past should show fringes or which-path.", phys:"A delayed-choice eraser. Complementary fringes appear only in coincidence subsets. No retrocausal signaling." },
+  { href:"./lab/timecrystal/index.html", kicker:"Floquet toy", title:"Time Crystal", hook:"A kicked spin chain that ticks once every two kicks — a clock that refuses the driver’s beat.", phys:"A discrete time-crystal toy (period-doubled magnetization). Not a crystal “made of time.”" },
+  { href:"./lab/leylines/index.html", kicker:"Quantum walk", title:"Ley Lines", hook:"A split-step Hadamard walk paints bright diagonal arms a classical walker never draws.", phys:"Kitagawa-style 2-D split-step walk: coin then shift on x, then on y. Ballistic (~t) vs classical (~√t). Not earth energy." },
+  { href:"./lab/soulbond/index.html", kicker:"Swapping", title:"Soul Bond", hook:"Two sigils that never met become a Bell pair after an officiant’s measurement — a bond with a CHSH violation.", phys:"Entanglement swapping (Żukowski et al. 1993). Classical bits are still required. Not a metaphysical soul-tie." },
+  { href:"./lab/wheeler/index.html", kicker:"It from bit", title:"Participatory Universe", hook:"Ask a question after the slits have “already happened,” and the earlier record agrees with what you asked.", phys:"Wheeler’s delayed-choice experiment. An interpretation, not a proof that consciousness creates the cosmos." },
+  { href:"./lab/grimoire/index.html", kicker:"Network", title:"Grimoire Network", hook:"Shared sigil phrases become nodes. An officiant Bell-swaps their threads until monogamy says no.", phys:"Swapping on an eight-qubit graph. Bonded pairs hit Tsirelson’s 2√2. Phrases are labels, not a metaphysical web.", featured:true },
+  { href:"./lab/bb84/index.html", kicker:"Spell seal", title:"Spell Seal · BB84", hook:"Encode a key in conjugate bases. An intercept-resend eavesdropper leaves a 25% scar; the seal aborts.", phys:"Bennett–Brassard 1984. Teaching toy: no authentication, no privacy amplification, no finite-key proof." },
+  { href:"./lab/wormhole/index.html", kicker:"Analogue", title:"Wormhole", hook:"Drop a message into one mouth of a 7-qubit thermofield-double stand-in; a two-sided coupling can make it reappear in the other.", phys:"A small-circuit analogue of Gao–Jafferis–Wall / Google 2022 SYK-inspired teleportation. Not a spacetime throat, not gravity.", featured:true },
+  { href:"./lab/darwinism/index.html", kicker:"Objectivity", title:"Quantum Darwinism", hook:"How a fact becomes objective: the environment keeps many agreeing copies of one pointer.", phys:"Zurek’s programme in a CNOT-broadcast toy. I(S:F) is exact von Neumann mutual information. An interpretation, not Orch-OR." }
+];
+
+function card(e, featured){
+  return `<a class="card${featured?' featured':''}" href="${e.href}">
+    <div class="kicker">${e.kicker}</div>
+    <h3>${e.title}</h3>
+    <p class="hook">${e.hook}</p>
+    <p class="phys">Honest physics: ${e.phys}</p>
+  </a>`;
+}
+document.getElementById('featured').innerHTML = EXPERIMENTS.filter(e=>e.featured).map(e=>card(e,true)).join('');
+document.getElementById('all-home').innerHTML = EXPERIMENTS.map(e=>card(e)).join('');
+document.getElementById('all-labs').innerHTML = EXPERIMENTS.map(e=>card(e)).join('');
+
+function show(name){
+  document.querySelectorAll('.view').forEach(v=>v.hidden = v.id !== 'view-'+name);
+  document.querySelectorAll('.tabbar button[data-view]').forEach(b=>{
+    b.setAttribute('aria-selected', b.dataset.view===name ? 'true' : 'false');
+  });
+  if (name==='home' || name==='labs' || name==='about') {
+    history.replaceState({view:name}, '', name==='home' ? './' : '#'+name);
+    window.scrollTo(0,0);
+  }
+}
+document.querySelector('.tabbar').addEventListener('click', ev=>{
+  const b=ev.target.closest('button'); if(!b) return;
+  if (b.dataset.href) { location.href=b.dataset.href; return; }
+  if (b.dataset.view) show(b.dataset.view);
+});
+if (location.hash==='#labs') show('labs');
+else if (location.hash==='#about') show('about');
+else show('home');
+window.labReady = true;
+</script>
+</body>
+</html>
