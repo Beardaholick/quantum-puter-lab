@@ -1,0 +1,78 @@
+#!/bin/bash
+# Quantum Puter Lab — start a local server and open a chromeless window.
+set -e
+CONTENTS="$(cd "$(dirname "$0")/.." && pwd)"
+WWW="$CONTENTS/Resources/www"
+LOGDIR="$HOME/Library/Application Support/QuantumPuterLab"
+mkdir -p "$LOGDIR"
+LOG="$LOGDIR/server.log"
+URLFILE="$LOGDIR/lan-url.txt"
+
+port_open() {
+  local p="$1"
+  /usr/bin/python3 - "$p" << 'PY'
+import socket, sys
+p=int(sys.argv[1])
+s=socket.socket(); s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+try:
+    s.bind(("", p)); s.close(); raise SystemExit(0)
+except OSError:
+    raise SystemExit(1)
+PY
+}
+
+PORT=8766
+while ! port_open "$PORT"; do PORT=$((PORT+1)); done
+
+LAN=$(/usr/bin/python3 - << 'PY'
+import socket
+ip="127.0.0.1"
+try:
+    s=socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    s.connect(("8.8.8.8",80))
+    ip=s.getsockname()[0]
+    s.close()
+except OSError:
+    pass
+print(ip)
+PY
+)
+
+cd "$WWW"
+/usr/bin/python3 -m http.server "$PORT" --bind 0.0.0.0 --directory "$WWW" >"$LOG" 2>&1 &
+SERVER_PID=$!
+cleanup() { kill "$SERVER_PID" 2>/dev/null || true; }
+trap cleanup EXIT INT TERM
+
+# wait until up
+for i in 1 2 3 4 5 6 7 8 9 10; do
+  /usr/bin/python3 - "$PORT" << 'PY' && break
+import sys, urllib.request
+try:
+    urllib.request.urlopen("http://127.0.0.1:%s/" % sys.argv[1], timeout=0.4)
+except Exception:
+    raise SystemExit(1)
+PY
+  sleep 0.2
+done
+
+LOCAL="http://127.0.0.1:${PORT}/"
+PHONE="http://${LAN}:${PORT}/"
+printf "%s\n" "$PHONE" > "$URLFILE"
+/usr/bin/osascript -e "display notification \"On your iPhone (same Wi-Fi): ${PHONE} — Safari, then Add to Home Screen\" with title \"Quantum Puter Lab\"" >/dev/null 2>&1 || true
+
+CHROME="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+PROFILE="$LOGDIR/Chrome"
+if [ -x "$CHROME" ]; then
+  "$CHROME" \
+    --app="$LOCAL" \
+    --user-data-dir="$PROFILE" \
+    --no-first-run \
+    --no-default-browser-check \
+    --disable-features=Translate \
+    >/dev/null 2>&1
+else
+  open "$LOCAL"
+  # keep the server up until the user quits via the dock
+  osascript -e 'display dialog "Quantum Puter Lab is open in your browser.\n\nOn your iPhone (same Wi-Fi):\n'"$PHONE"'\n\nClick OK to stop the local server." with title "Quantum Puter Lab" buttons {"Stop server"} default button 1' >/dev/null 2>&1 || true
+fi
