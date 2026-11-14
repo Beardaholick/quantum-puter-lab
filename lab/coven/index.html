@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Ritual Circle · GHZ</title>
+<link rel="stylesheet" href="../theme.css">
+
+<meta name="theme-color" content="#07060a">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<link rel="manifest" href="../../manifest.webmanifest">
+<link rel="apple-touch-icon" href="../../icons/apple-touch-icon.png">
+<script src="../../app-pwa.js" defer></script>
+
+<style>
+  .wrap { display: grid; grid-template-columns: 300px 1fr; min-height: calc(100vh - 54px); }
+  aside { padding: 1rem 1.1rem; border-right: 1px solid var(--line); background: #0c0a10; overflow: auto; }
+  #ring { display: block; width: 100%; height: calc(100vh - 54px); }
+  .log { font-family: ui-monospace, Menlo, monospace; font-size: 0.72rem; color: var(--gold-soft); white-space: pre-wrap; margin-top: 0.8rem; }
+  @media (max-width: 800px) { .wrap { grid-template-columns: 1fr; } #ring { height: 70vh; } }
+</style>
+</head>
+<body>
+<div class="grain" aria-hidden="true"></div>
+<header>
+  <a class="back" href="../../index.html">← Lab</a>
+  <h1>RITUAL CIRCLE</h1>
+  <p class="lede">GHZ coven · Mermin inequality · one word collapses the circle</p>
+</header>
+<div class="wrap">
+  <aside>
+    <label>Coven size N = <span id="nv">5</span></label>
+    <input id="n" type="range" min="3" max="8" value="5">
+    <div class="row">
+      <button class="act primary" id="form">Form GHZ</button>
+      <button class="act" id="speakZ">Speak in Z</button>
+      <button class="act" id="speakX">Parity in X</button>
+      <button class="act" id="mermin">Mermin test</button>
+    </div>
+    <div id="merminBox"></div>
+    <dl class="metrics" id="metrics"></dl>
+    <div class="log" id="log"></div>
+    <p class="honest">A GHZ state is (|00…0⟩ + |11…1⟩)/√2. Z measurements all agree; the X-parity is fixed; the Mermin operator Re ⟨∏(X+iY)⟩ equals 2<sup>N−1</sup>, against a classical bound 2<sup>⌊N/2⌋</sup> (for N=3: 4 vs 2). That is a Bell theorem for N parties — not telepathy, and not a group mind.</p>
+  </aside>
+  <section class="stage"><canvas id="ring"></canvas></section>
+</div>
+<script>
+(function(){
+  const canvas=document.getElementById("ring");
+  const names=["Asha","Bell","Cyr","Danae","Eos","Flint","Gia","Hex"];
+  let N=5, formed=false, measured=null, basis="Z", pulse=0, t0=0;
+  function dim(){return 1<<N;}
+  function fresh(){const d=dim(),re=new Float64Array(d),im=new Float64Array(d);re[0]=1;return {re,im};}
+  function H(st,q){const c=Math.SQRT1_2,bit=1<<q,D=dim(),{re,im}=st;for(let i=0;i<D;i++){if(i&bit)continue;const j=i|bit,ar=re[i],ai=im[i],br=re[j],bi=im[j];re[i]=c*(ar+br);im[i]=c*(ai+bi);re[j]=c*(ar-br);im[j]=c*(ai-bi);}}
+  function CX(st,c,t){const cb=1<<c,tb=1<<t,D=dim(),{re,im}=st;for(let i=0;i<D;i++){if((i&cb)&&!(i&tb)){const j=i|tb,tr=re[i],ti=im[i];re[i]=re[j];im[i]=im[j];re[j]=tr;im[j]=ti;}}}
+  function ghz(){const st=fresh();H(st,0);for(let q=1;q<N;q++)CX(st,0,q);return st;}
+  function sampleZ(st){
+    // GHZ in Z: 50/50 all0 or all1
+    const p0=st.re[0]*st.re[0]+st.im[0]*st.im[0];
+    const all1=(1<<N)-1;
+    const p1=st.re[all1]*st.re[all1]+st.im[all1]*st.im[all1];
+    return (Math.random()* (p0+p1) < p0) ? 0 : all1;
+  }
+  function sampleX(st){
+    // Apply H to all, then sample Z, then interpret bits as X outcomes
+    const s={re:Float64Array.from(st.re),im:Float64Array.from(st.im)};
+    for(let q=0;q<N;q++) H(s,q);
+    const D=dim();
+    let r=Math.random(),acc=0,idx=D-1;
+    for(let i=0;i<D;i++){acc+=s.re[i]*s.re[i]+s.im[i]*s.im[i];if(r<=acc){idx=i;break;}}
+    return idx;
+  }
+  function applyXplusIY(st,q){
+    const bit=1<<q, D=st.re.length;
+    const re=new Float64Array(D), im=new Float64Array(D);
+    for(let i=0;i<D;i++){
+      if(i&bit){ const j=i^bit; re[j]+=2*st.re[i]; im[j]+=2*st.im[i]; }
+    }
+    return {re,im};
+  }
+  function merminM(st,n){
+    // M = Re ⟨∏_j (X_j + i Y_j)⟩. For GHZ, M = 2^{n-1}.
+    // Classical bound 2^{⌊n/2⌋}. This is the (unnormalized) Mermin operator.
+    let s={re:Float64Array.from(st.re),im:Float64Array.from(st.im)};
+    for(let q=0;q<n;q++) s=applyXplusIY(s,q);
+    let cr=0;
+    for(let i=0;i<st.re.length;i++) cr+=st.re[i]*s.re[i]+st.im[i]*s.im[i];
+    return cr;
+  }
+  function runMermin(){
+    if(!formed) form();
+    const st=ghz();
+    const M=merminM(st,N);
+    const classical=Math.pow(2, Math.floor(N/2));
+    const quantum=Math.pow(2, N-1);
+    const viol=Math.abs(M)>classical+1e-6;
+    const box=document.getElementById("merminBox");
+    box.innerHTML=`<div class="S ${viol?"violate":"classical"}" style="font-size:1.5rem;margin-top:0.6rem;font-family:ui-monospace,Menlo,monospace;color:${viol?"var(--cyan)":"var(--gold-soft)"}">M = ${M.toFixed(3)}</div>
+      <p class="honest" style="margin-top:0.35rem">Mermin operator Re ⟨∏ (X + iY)⟩ on all ${N} qubits. Classical bound 2<sup>⌊N/2⌋</sup> = ${classical}. A GHZ state reaches 2<sup>N−1</sup> = ${quantum}. ${viol?"Violation: no local hidden-variable assignment can match this number.":"No violation."} For N=3 this is the familiar |⟨XXX⟩−⟨XYY⟩−⟨YXY⟩−⟨YYX⟩| ≤ 2, quantum 4. Not telepathy — a Bell theorem for N parties.</p>`;
+    logline("Mermin M = "+M.toFixed(3)+"  (classical ≤ "+classical+", GHZ = "+quantum+").");
+    metrics();
+  }
+  function form(){formed=true;measured=null;pulse=1;logline("GHZ prepared on "+N+" qubits.  The circle is one state.");metrics(); }
+  function speak(bas){
+    if(!formed){form();}
+    const st=ghz();
+    basis=bas;
+    measured = bas==="Z" ? sampleZ(st) : sampleX(st);
+    pulse=1;
+    if(bas==="Z"){
+      const allOn=measured===((1<<N)-1);
+      logline("Z measurement: all "+(allOn?"kindled (111…1)":"dark (000…0)")+". Perfect correlation.");
+    } else {
+      let prod=1; const bits=[];
+      for(let q=0;q<N;q++){const b=(measured>>q)&1; bits.push(b?"-":"+"); prod*= b?-1:1;}
+      logline("X outcomes: "+bits.join(" ")+"   product = "+(prod>0?"+1":"−1")+" (GHZ predicts +1 for this state).");
+    }
+    metrics();
+  }
+  function logline(s){const el=document.getElementById("log");el.textContent=s+"\n"+(el.textContent||""); }
+  function metrics(){
+    document.getElementById("metrics").innerHTML=`
+      <div><dt>N</dt><dd>${N}</dd></div>
+      <div><dt>state</dt><dd>${formed?"(|0…0⟩+|1…1⟩)/√2":"separable |0…0⟩"}</dd></div>
+      <div><dt>basis</dt><dd>${measured==null?"—":basis}</dd></div>`;
+  }
+  function resize(){
+    const r=canvas.parentElement.getBoundingClientRect();
+    const dpr=Math.min(2,devicePixelRatio||1);
+    canvas.width=Math.floor(r.width*dpr); canvas.height=Math.floor(r.height*dpr);
+  }
+  function draw(t){
+    const ctx=canvas.getContext("2d");
+    const w=canvas.width,h=canvas.height;
+    ctx.clearRect(0,0,w,h);
+    const cx=w/2,cy=h/2,R=Math.min(w,h)*0.34;
+    pulse=Math.max(0,pulse-0.016);
+    ctx.strokeStyle="#d4af37"; ctx.globalAlpha=0.55+0.35*pulse; ctx.lineWidth=Math.max(1.2,R*0.012);
+    ctx.beginPath(); ctx.arc(cx,cy,R,0,Math.PI*2); ctx.stroke();
+    // inner weave
+    ctx.strokeStyle="#00e5ff"; ctx.globalAlpha=formed?0.45:0.12; ctx.lineWidth=1;
+    if(formed){
+      ctx.beginPath();
+      for(let i=0;i<=N;i++){
+        const a=-Math.PI/2+i*2*Math.PI/N + t*0.15;
+        const x=cx+Math.cos(a)*R*0.45, y=cy+Math.sin(a)*R*0.45;
+        if(i===0)ctx.moveTo(x,y); else ctx.lineTo(x,y);
+      }
+      ctx.closePath(); ctx.stroke();
+    }
+    for(let i=0;i<N;i++){
+      const a=-Math.PI/2+i*2*Math.PI/N;
+      const x=cx+Math.cos(a)*R, y=cy+Math.sin(a)*R;
+      let on=false, known=false;
+      if(measured!=null){ known=true; on=((measured>>i)&1)===1; }
+      // flame
+      const flick=1+0.08*Math.sin(t*6+i);
+      ctx.globalAlpha=1;
+      ctx.beginPath();
+      const rad=(known?(on?16:7):10)*flick*(canvas.width/900);
+      ctx.fillStyle=known?(on?"#f0d78c":"#3a3328"):(formed?"#7ad4e8":"#8a7a64");
+      ctx.shadowColor=ctx.fillStyle; ctx.shadowBlur=known&&on?24:8;
+      ctx.arc(x,y,rad,0,Math.PI*2); ctx.fill(); ctx.shadowBlur=0;
+      ctx.fillStyle="#f3e6c4"; ctx.font=`${Math.max(12,R*0.08)}px Palatino, serif`;
+      ctx.textAlign="center";
+      ctx.fillText(names[i], x, y+R*0.22);
+    }
+    ctx.globalAlpha=0.8; ctx.fillStyle="#f0d78c";
+    ctx.font=`${Math.max(14,R*0.1)}px Palatino, serif`;
+    ctx.textAlign="center";
+    ctx.fillText(formed?"GHZ":"idle", cx, cy+4);
+  }
+  document.getElementById("n").oninput=e=>{N=+e.target.value;document.getElementById("nv").textContent=N;formed=false;measured=null;metrics();};
+  document.getElementById("form").onclick=form;
+  document.getElementById("speakZ").onclick=()=>speak("Z");
+  document.getElementById("speakX").onclick=()=>speak("X");
+  document.getElementById("mermin").onclick=runMermin;
+  window.addEventListener("resize",resize);
+  resize(); metrics();
+  (function loop(ts){draw(ts*0.001);requestAnimationFrame(loop);})(0);
+  window.labReady=true;
+})();
+</script>
+</body>
+</html>

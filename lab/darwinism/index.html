@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Quantum Darwinism · how reality becomes objective</title>
+<link rel="stylesheet" href="../theme.css">
+
+<meta name="theme-color" content="#07060a">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<link rel="manifest" href="../../manifest.webmanifest">
+<link rel="apple-touch-icon" href="../../icons/apple-touch-icon.png">
+<script src="../../app-pwa.js" defer></script>
+
+<style>
+  .wrap { display: grid; grid-template-columns: 330px 1fr; min-height: calc(100vh - 54px); }
+  aside { padding: 1rem 1.1rem; border-right: 1px solid var(--line); background: #0c0a10; overflow: auto; }
+  #scene { display: block; width: 100%; height: calc(100vh - 54px); }
+  label.sl { display:flex; justify-content:space-between; align-items:center; gap:0.6rem; color:#c9b89a; font-size:0.85rem; margin:0.45rem 0; }
+  input[type=range]{ flex:1; }
+  .tog { display:flex; align-items:center; gap:0.5rem; color:#f3e6c4; margin:0.7rem 0; }
+  @media (max-width: 800px) { .wrap { grid-template-columns: 1fr; } #scene { height: 70vh; } }
+</style>
+</head>
+<body>
+<div class="grain" aria-hidden="true"></div>
+<header>
+  <a class="back" href="../../index.html">← Lab</a>
+  <h1>QUANTUM DARWINISM</h1>
+  <p class="lede">How a fact becomes objective · redundant records in the environment</p>
+</header>
+<div class="wrap">
+  <aside>
+    <label class="sl">environment qubits <span id="nv">6</span>
+      <input id="n" type="range" min="3" max="7" step="1" value="6">
+    </label>
+    <label class="sl">imprints (CNOTs) <span id="cv">6</span>
+      <input id="copies" type="range" min="0" max="7" step="1" value="6">
+    </label>
+    <label class="tog"><input type="checkbox" id="scramble"> scramble instead (no redundant branching)</label>
+    <div class="row">
+      <button class="act primary" id="run">Broadcast the pointer</button>
+      <button class="act" id="reset">Reset</button>
+    </div>
+    <dl class="metrics" id="metrics"></dl>
+    <p class="honest">Zurek’s quantum Darwinism, in a toy model. The system qubit starts in |+⟩ = (|0⟩+|1⟩)/√2. In the “broadcast” mode, CNOT(S, E<sub>i</sub>) copies the Z pointer into each environment qubit, producing a GHZ-like state. The mutual information I(S:F)=S(S)+S(F)−S(SF) is computed from exact von Neumann entropies of the reduced states. For this channel, I(S:F) already saturates at 1 bit for every proper fragment (1≤k<N) — many observers, each looking at a different environment qubit, agree on the same classical fact. When the whole environment is taken, I jumps to 2 bits: the leftover quantum correlation, visible only if every fragment is collected. The 1-bit plateau is the proposed origin of objective, classical reality. The scramble toggle replaces the CNOTs with a short random-looking unitary so the same information is buried in many-body correlations; small fragments then carry almost none of it (a Page-curve-like rise). This is a research programme and an interpretation, not a settled ontology, and it is not a claim that consciousness collapses the wavefunction.</p>
+  </aside>
+  <section class="stage"><canvas id="scene"></canvas></section>
+</div>
+<script>
+(function(){
+  const canvas=document.getElementById("scene");
+  let N=6, copies=6, scramble=false, st=null, curve=[], scrambleCurve=[], I1=[], ran=false, anim=0, Ssys=0;
+
+  function dimOf(n){return 1<<n;} // n = 1+N qubits, qubit 0 = S
+  function fresh(D){const re=new Float64Array(D),im=new Float64Array(D);re[0]=1;return {re,im};}
+  function H(st,q,D){const c=Math.SQRT1_2,bit=1<<q,{re,im}=st;for(let i=0;i<D;i++){if(i&bit)continue;const j=i|bit,ar=re[i],ai=im[i],br=re[j],bi=im[j];re[i]=c*(ar+br);im[i]=c*(ai+bi);re[j]=c*(ar-br);im[j]=c*(ai-bi);}}
+  function CX(st,c,t,D){const cb=1<<c,tb=1<<t,{re,im}=st;for(let i=0;i<D;i++){if((i&cb)&&!(i&tb)){const j=i|tb,tr=re[i],ti=im[i];re[i]=re[j];im[i]=im[j];re[j]=tr;im[j]=ti;}}}
+  function RY(st,q,th,D){
+    const c=Math.cos(th/2),s=Math.sin(th/2),bit=1<<q,{re,im}=st;
+    for(let i=0;i<D;i++){
+      if(i&bit) continue;
+      const j=i|bit,ar=re[i],ai=im[i],br=re[j],bi=im[j];
+      re[i]=c*ar-s*br; im[i]=c*ai-s*bi;
+      re[j]=s*ar+c*br; im[j]=s*ai+c*bi;
+    }
+  }
+  function pack(index, qs){ let a=0; for(let k=0;k<qs.length;k++) if(index&(1<<qs[k])) a|=1<<k; return a; }
+  function sameRest(i,j,qs,nQ){
+    const mask=qs.reduce((m,q)=>m|(1<<q),0);
+    return ((i & ~mask)===(j & ~mask));
+  }
+  function reducedRho(st, qs, nQ){
+    const D=dimOf(nQ), m=qs.length, dim=1<<m;
+    const re=new Float64Array(dim*dim), im=new Float64Array(dim*dim);
+    for(let i=0;i<D;i++){
+      const ia=pack(i,qs);
+      for(let j=0;j<D;j++){
+        if(!sameRest(i,j,qs,nQ)) continue;
+        const ja=pack(j,qs);
+        re[ia*dim+ja]+=st.re[i]*st.re[j]+st.im[i]*st.im[j];
+        im[ia*dim+ja]+=st.im[i]*st.re[j]-st.re[i]*st.im[j];
+      }
+    }
+    return {re,im,n:dim};
+  }
+  // Hermitian eigenvalues via real-symmetric Jacobi on the 2n embedding
+  function symEigs(A,n){
+    const a=A.slice();
+    for(let sweep=0;sweep<80;sweep++){
+      let off=0;
+      for(let p=0;p<n;p++) for(let q=p+1;q<n;q++){
+        const apq=a[p*n+q];
+        off+=apq*apq;
+        if(Math.abs(apq)<1e-15) continue;
+        const app=a[p*n+p], aqq=a[q*n+q];
+        const tau=(aqq-app)/(2*apq);
+        const t=(tau>=0?1:-1)/(Math.abs(tau)+Math.sqrt(1+tau*tau));
+        const c=1/Math.sqrt(1+t*t), s=t*c;
+        for(let k=0;k<n;k++){
+          if(k===p||k===q) continue;
+          const akp=a[k*n+p], akq=a[k*n+q];
+          const np=c*akp-s*akq, nq=s*akp+c*akq;
+          a[k*n+p]=a[p*n+k]=np;
+          a[k*n+q]=a[q*n+k]=nq;
+        }
+        a[p*n+p]=c*c*app-2*c*s*apq+s*s*aqq;
+        a[q*n+q]=s*s*app+2*c*s*apq+c*c*aqq;
+        a[p*n+q]=a[q*n+p]=0;
+      }
+      if(off<1e-20) break;
+    }
+    return Array.from({length:n},(_,i)=>a[i*n+i]);
+  }
+  function hermitianEigs(re,im,n){
+    const m=2*n, S=new Float64Array(m*m);
+    for(let i=0;i<n;i++) for(let j=0;j<n;j++){
+      S[i*m+j]=re[i*n+j];
+      S[(i+n)*m+(j+n)]=re[i*n+j];
+      S[i*m+(j+n)]=-im[i*n+j];
+      S[(i+n)*m+j]=im[i*n+j];
+    }
+    const ev=symEigs(S,m).sort((a,b)=>a-b);
+    const out=[];
+    for(let i=0;i<m;i+=2) out.push(0.5*(ev[i]+ev[i+1]));
+    return out;
+  }
+    function vonNeumann(st, qs, nQ){
+    if(qs.length===0) return 0;
+    if(qs.length>nQ/2){
+      const all=new Set(Array.from({length:nQ},(_,i)=>i));
+      qs.forEach(q=>all.delete(q));
+      return vonNeumann(st, [...all], nQ);
+    }
+    const rho=reducedRho(st,qs,nQ);
+    const ev=hermitianEigs(rho.re,rho.im,rho.n);
+    let s=0;
+    for(const l of ev){ if(l>1e-12) s -= l*Math.log2(l); }
+    return s;
+  }
+  function prepare(){
+    const nQ=1+N, D=dimOf(nQ);
+    const s=fresh(D);
+    H(s,0,D); // |+>
+    if(!scramble){
+      const k=Math.min(copies,N);
+      for(let i=0;i<k;i++) CX(s,0,i+1,D);
+    } else {
+      // short “already-scrambled” unitary: mix S into many-body correlations
+      const seed=0.37;
+      for(let layer=0;layer<3;layer++){
+        for(let q=0;q<nQ;q++) RY(s,q, seed*3.1+layer*0.7+q*1.17, D);
+        for(let q=0;q<nQ-1;q++) CX(s,q,q+1,D);
+        CX(s,nQ-1,0,D);
+      }
+    }
+    return s;
+  }
+  function analyze(s){
+    const nQ=1+N;
+    const SS=vonNeumann(s,[0],nQ);
+    const I=[];
+    const single=[];
+    for(let k=0;k<=N;k++){
+      const F=Array.from({length:k},(_,i)=>i+1); // first k env qubits
+      const SF=k===0? vonNeumann(s,[0],nQ) : vonNeumann(s,[0,...F],nQ);
+      const SF_=k===0?0:vonNeumann(s,F,nQ);
+      I.push(SS+SF_-SF);
+    }
+    for(let i=1;i<=N;i++){
+      const Si=vonNeumann(s,[i],nQ);
+      const SSi=vonNeumann(s,[0,i],nQ);
+      single.push(SS+Si-SSi);
+    }
+    return {SS,I,single};
+  }
+  function run(){
+    st=prepare();
+    const a=analyze(st);
+    Ssys=a.SS; curve=a.I; I1=a.single; ran=true; anim=1; update();
+  }
+  function reset(){st=null;ran=false;curve=[];I1=[];Ssys=0;update();}
+  function update(){
+    const red=I1.filter(x=>x>0.9).length;
+    document.getElementById("metrics").innerHTML=`
+      <div><dt>S(ρ<sub>S</sub>)</dt><dd>${ran?Ssys.toFixed(3)+" bits":"—"}</dd></div>
+      <div><dt>I(S:F) k=1</dt><dd>${ran?curve[1].toFixed(3):"—"}</dd></div>
+      <div><dt>I(S:F) k=N</dt><dd>${ran?curve[N].toFixed(3):"—"}</dd></div>
+      <div><dt>redundant copies</dt><dd>${ran?red+" / "+N+"  (I>0.9)":"—"}</dd></div>`;
+  }
+  function resize(){const r=canvas.parentElement.getBoundingClientRect();const dpr=Math.min(2,devicePixelRatio||1);canvas.width=Math.floor(r.width*dpr);canvas.height=Math.floor(r.height*dpr);}
+  function draw(t){
+    const ctx=canvas.getContext("2d");
+    const w=canvas.width,h=canvas.height;
+    ctx.clearRect(0,0,w,h);
+    ctx.fillStyle="#f0d78c";
+    ctx.font=`${Math.max(15,w*0.017)}px Palatino, serif`;
+    ctx.textAlign="center";
+    ctx.fillText("Quantum Darwinism  ·  how a fact becomes objective", w/2, h*0.07);
+    ctx.fillStyle="#8a7a64";
+    ctx.font=`${Math.max(11,w*0.012)}px Palatino, serif`;
+    ctx.fillText(scramble?"Scrambled imprint  ·  information hides in many-body correlations":"Pointer broadcast  ·  each environment qubit holds the same Z fact", w/2, h*0.115);
+
+    // system + environment orbs
+    const cx=w*0.32, cy=h*0.42, R=Math.min(w,h)*0.22;
+    ctx.beginPath(); ctx.arc(cx,cy,Math.min(w,h)*0.07,0,Math.PI*2);
+    ctx.fillStyle="#1a1420"; ctx.fill();
+    ctx.strokeStyle="#f0d78c"; ctx.lineWidth=2; ctx.stroke();
+    ctx.fillStyle="#f0d78c"; ctx.font=`${Math.max(13,w*0.014)}px Palatino, serif`;
+    ctx.fillText("S", cx, cy+5);
+    for(let i=0;i<N;i++){
+      const a=-Math.PI/2+i*(Math.PI*2/N);
+      const x=cx+R*Math.cos(a), y=cy+R*Math.sin(a);
+      const copy=(!scramble && i<copies);
+      const info=ran&&I1[i]?I1[i]:0;
+      ctx.beginPath(); ctx.arc(x,y,Math.min(w,h)*0.035,0,Math.PI*2);
+      ctx.fillStyle=info>0.9?"#2a2010":"#120e16"; ctx.fill();
+      ctx.strokeStyle=info>0.9?"#f0d78c":(copy?"#00e5ff":"#3a3328");
+      ctx.lineWidth=info>0.9?2:1; ctx.stroke();
+      if(ran){
+        ctx.strokeStyle=info>0.9?"#f0d78c":"#3a3328";
+        ctx.globalAlpha=0.35+0.5*info;
+        ctx.beginPath(); ctx.moveTo(cx,cy); ctx.lineTo(x,y); ctx.stroke();
+        ctx.globalAlpha=1;
+      }
+      ctx.fillStyle="#c9b89a";
+      ctx.font=`${Math.max(10,w*0.01)}px ui-monospace, Menlo, monospace`;
+      ctx.fillText("E"+(i+1), x, y+4);
+    }
+
+    // I(S:F) vs k
+    const bx=w*0.58, by=h*0.22, bw=w*0.34, bh=h*0.55;
+    ctx.strokeStyle="#3a3328"; ctx.strokeRect(bx,by,bw,bh);
+    ctx.fillStyle="#c9b89a"; ctx.font=`${Math.max(11,w*0.012)}px Palatino, serif`;
+    ctx.textAlign="left";
+    ctx.fillText("I(S:F)  vs  fragment size k", bx, by-8);
+    if(curve.length){
+      const kmax=N, Imax=Math.max(1.05, ...curve);
+      ctx.beginPath();
+      curve.forEach((I,k)=>{
+        const x=bx+bw*(k/kmax), y=by+bh-bh*(I/Imax);
+        if(k===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+      });
+      ctx.strokeStyle=scramble?"#ff4fd8":"#00e5ff"; ctx.lineWidth=2; ctx.stroke();
+      curve.forEach((I,k)=>{
+        const x=bx+bw*(k/kmax), y=by+bh-bh*(I/Imax);
+        ctx.fillStyle=I>0.9?"#f0d78c":"#00e5ff";
+        ctx.beginPath(); ctx.arc(x,y,3.5,0,Math.PI*2); ctx.fill();
+      });
+      // plateau line at 1
+      ctx.setLineDash([3,3]); ctx.strokeStyle="#f0d78c";
+      ctx.beginPath(); ctx.moveTo(bx, by+bh-bh*(1/Imax)); ctx.lineTo(bx+bw, by+bh-bh*(1/Imax)); ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle="#8a7a64";
+      ctx.fillText("1 bit  (objective pointer)", bx+8, by+bh-bh*(1/Imax)-6);
+      ctx.fillText("k=0", bx, by+bh+14);
+      ctx.textAlign="right"; ctx.fillText("k="+N, bx+bw, by+bh+14);
+    }
+    ctx.textAlign="center";
+    ctx.fillStyle="#8a7a64";
+    ctx.font=`${Math.max(11,w*0.012)}px Palatino, serif`;
+    ctx.fillText(ran?(scramble?"Small fragments are almost silent — no objective record.":"Already at k=1 the fact is objective: every fragment agrees."):"Broadcast the pointer to watch redundancy appear.", w/2, h*0.93);
+    anim=Math.max(0,anim-0.02);
+  }
+  document.getElementById("n").oninput=e=>{
+    N=+e.target.value; document.getElementById("nv").textContent=N;
+    const c=document.getElementById("copies"); c.max=N; if(copies>N){copies=N;c.value=N;}
+    document.getElementById("cv").textContent=copies;
+    if(ran) run();
+  };
+  document.getElementById("copies").oninput=e=>{copies=+e.target.value;document.getElementById("cv").textContent=copies; if(ran) run();};
+  document.getElementById("scramble").onchange=e=>{scramble=e.target.checked; if(ran) run();};
+  document.getElementById("run").onclick=run;
+  document.getElementById("reset").onclick=reset;
+  window.addEventListener("resize",resize);
+  resize(); update();
+  (function loop(ts){draw(ts*0.001);requestAnimationFrame(loop);})(0);
+  window.labRun=run; window.labSet=o=>{ if(o&&"scramble"in o){scramble=!!o.scramble;document.getElementById("scramble").checked=scramble;} run(); };
+  window.labReady=true;
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Spell Seal · BB84 QKD</title>
+<link rel="stylesheet" href="../theme.css">
+
+<meta name="theme-color" content="#07060a">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<link rel="manifest" href="../../manifest.webmanifest">
+<link rel="apple-touch-icon" href="../../icons/apple-touch-icon.png">
+<script src="../../app-pwa.js" defer></script>
+
+<style>
+  .wrap { display: grid; grid-template-columns: 330px 1fr; min-height: calc(100vh - 54px); }
+  aside { padding: 1rem 1.1rem; border-right: 1px solid var(--line); background: #0c0a10; overflow: auto; }
+  #scene { display: block; width: 100%; height: calc(100vh - 54px); }
+  label.sl { display:flex; justify-content:space-between; align-items:center; gap:0.6rem; color:#c9b89a; font-size:0.85rem; margin:0.45rem 0; }
+  input[type=range]{ flex:1; }
+  .tog { display:flex; align-items:center; gap:0.5rem; color:#f3e6c4; margin:0.7rem 0; }
+  .alarm { font: 1.15rem ui-monospace, Menlo, monospace; margin-top:0.6rem; }
+  @media (max-width: 800px) { .wrap { grid-template-columns: 1fr; } #scene { height: 70vh; } }
+</style>
+</head>
+<body>
+<div class="grain" aria-hidden="true"></div>
+<header>
+  <a class="back" href="../../index.html">← Lab</a>
+  <h1>SPELL SEAL</h1>
+  <p class="lede">BB84 quantum key distribution · an eavesdropper leaves a statistical scar</p>
+</header>
+<div class="wrap">
+  <aside>
+    <label class="sl">photons <span id="nv">64</span>
+      <input id="n" type="range" min="16" max="256" step="16" value="64">
+    </label>
+    <label class="tog"><input type="checkbox" id="eve"> Eve intercept-resend</label>
+    <div class="row">
+      <button class="act primary" id="run">Seal the key</button>
+      <button class="act" id="reset">Reset</button>
+    </div>
+    <dl class="metrics" id="metrics"></dl>
+    <p class="alarm" id="alarm"></p>
+    <p class="honest">Bennett–Brassard 1984. Alice encodes each random bit in a random basis (Z or X); Bob measures each qubit in a random basis; they publicly compare bases and keep the sifted bits. In this ideal simulation, with no Eve, the quantum bit error rate on the sifted key is exactly 0. An intercept-resend eavesdropper who measures in a random basis and forwards the collapsed state induces QBER = 25% on the sifted key (she guesses the basis half the time; when she is wrong she fully randomizes Bob’s bit). A threshold of 11% is the usual textbook abort for this attack family — if QBER is above it, they discard the key. This page is a teaching toy: it has no authenticated classical channel, no privacy amplification, and no finite-key security proof. It does not make an unbreakable magical seal. Real QKD security is a theorem about a protocol, not a vibe.</p>
+  </aside>
+  <section class="stage"><canvas id="scene"></canvas></section>
+</div>
+<script>
+(function(){
+  const canvas=document.getElementById("scene");
+  let N=64, eve=false, rounds=[], sift=[], qber=0, sealed=false, anim=0;
+  function bit(){return Math.random()<0.5?0:1;}
+  // Measure |ψ> prepared as Alice's (basis aB, bit aBit) in Bob/Eve basis mB.
+  // Z basis: |0>,|1>; X basis: |+>,|->. If bases match, result = bit; else 50/50.
+  function measure(prepB, prepBit, measB){
+    if(prepB===measB) return prepBit;
+    return bit();
+  }
+  function run(){
+    rounds=[]; sift=[];
+    for(let i=0;i<N;i++){
+      const aBit=bit(), aB=bit(), bB=bit();
+      let bobSees;
+      let eB=-1, eBit=-1;
+      if(eve){
+        eB=bit();
+        eBit=measure(aB,aBit,eB);
+        bobSees=measure(eB,eBit,bB);
+      } else {
+        bobSees=measure(aB,aBit,bB);
+      }
+      const keep=aB===bB;
+      const err=keep && bobSees!==aBit;
+      rounds.push({aBit,aB,bB,bob:bobSees,eB,eBit,keep,err});
+      if(keep) sift.push({aBit,bob:bobSees,err,aB});
+    }
+    qber = sift.length? sift.filter(s=>s.err).length/sift.length : 0;
+    sealed = qber < 0.11;
+    anim=1; update();
+  }
+  function reset(){rounds=[];sift=[];qber=0;sealed=false;update();}
+  function update(){
+    const sN=sift.length, eN=sift.filter(s=>s.err).length;
+    document.getElementById("metrics").innerHTML=`
+      <div><dt>sent</dt><dd>${rounds.length||"—"}</dd></div>
+      <div><dt>sifted</dt><dd>${sN||"—"}  (${rounds.length? (100*sN/rounds.length).toFixed(0):"—"}%)</dd></div>
+      <div><dt>QBER</dt><dd>${rounds.length? (100*qber).toFixed(1)+"%":"—"}</dd></div>
+      <div><dt>theory</dt><dd>${eve?"25% with Eve":"0% with no Eve"}</dd></div>`;
+    const al=document.getElementById("alarm");
+    if(!rounds.length){ al.textContent=""; al.style.color="#8a7a64"; return; }
+    if(sealed){ al.textContent="SEAL HOLDS  ·  QBER below 11%"; al.style.color="#7cff9a"; }
+    else { al.textContent="SEAL BROKEN  ·  abort  ·  eavesdropper scar"; al.style.color="#ff8aa0"; }
+  }
+  function resize(){const r=canvas.parentElement.getBoundingClientRect();const dpr=Math.min(2,devicePixelRatio||1);canvas.width=Math.floor(r.width*dpr);canvas.height=Math.floor(r.height*dpr);}
+  function draw(t){
+    const ctx=canvas.getContext("2d");
+    const w=canvas.width,h=canvas.height;
+    ctx.clearRect(0,0,w,h);
+    ctx.fillStyle="#f0d78c";
+    ctx.font=`${Math.max(16,w*0.018)}px Palatino, serif`;
+    ctx.textAlign="center";
+    ctx.fillText("BB84  ·  an unbreakable spell seal  (until someone measures it)", w/2, h*0.08);
+    ctx.fillStyle="#8a7a64";
+    ctx.font=`${Math.max(12,w*0.012)}px Palatino, serif`;
+    ctx.fillText("Alice  →  "+(eve?"Eve  →  ":"")+"Bob     ·     gold = sifted and agreed     ·     red = sifted error     ·     dim = discarded basis mismatch", w/2, h*0.13);
+
+    const top=h*0.20, bot=h*0.72, left=w*0.08, right=w*0.92;
+    const rows=eve?4:3;
+    const labels=eve?["Alice bit","Alice basis","Eve basis","Bob basis"]:["Alice bit","Alice basis","Bob basis"];
+    const yh= (bot-top)/(rows+0.4);
+    ctx.textAlign="right";
+    ctx.font=`${Math.max(11,w*0.012)}px Palatino, serif`;
+    labels.forEach((lb,ri)=>{
+      ctx.fillStyle="#c9b89a";
+      ctx.fillText(lb, left-10, top+ri*yh+4);
+    });
+    ctx.fillText("sifted key", left-10, bot+28);
+
+    if(!rounds.length){
+      ctx.textAlign="center"; ctx.fillStyle="#8a7a64";
+      ctx.fillText("Choose a length, optionally summon Eve, and seal the key.", w/2, (top+bot)/2);
+      return;
+    }
+    const gap=(right-left)/N;
+    rounds.forEach((r,i)=>{
+      const x=left+i*gap+gap*0.5;
+      const cols=[
+        r.aBit?"#ff4fd8":"#00e5ff",
+        r.aB?"#f0d78c":"#7ca0ff",
+        ...(eve?[(r.eB?"#f0d78c":"#7ca0ff")]:[]),
+        r.bB?"#f0d78c":"#7ca0ff"
+      ];
+      const glyphs=[
+        r.aBit?"1":"0",
+        r.aB?"X":"Z",
+        ...(eve?[(r.eB?"X":"Z")]:[]),
+        r.bB?"X":"Z"
+      ];
+      glyphs.forEach((g,ri)=>{
+        ctx.fillStyle=cols[ri];
+        ctx.globalAlpha=r.keep?1:0.28;
+        ctx.textAlign="center";
+        ctx.font=`${Math.max(10,Math.min(14,gap*0.7))}px ui-monospace, Menlo, monospace`;
+        ctx.fillText(g, x, top+ri*yh+4);
+      });
+      ctx.globalAlpha=1;
+      // sift row
+      if(r.keep){
+        ctx.fillStyle=r.err?"#ff8aa0":"#f0d78c";
+        ctx.font=`${Math.max(11,Math.min(16,gap*0.8))}px ui-monospace, Menlo, monospace`;
+        ctx.fillText(r.aBit?"1":"0", x, bot+28);
+        if(r.err){
+          ctx.strokeStyle="#ff8aa0"; ctx.lineWidth=1; ctx.globalAlpha=0.7;
+          ctx.beginPath(); ctx.moveTo(x, top-8); ctx.lineTo(x, bot+32); ctx.stroke();
+          ctx.globalAlpha=1;
+        }
+      }
+    });
+    // QBER bar
+    const bx=w*0.15, by=h*0.84, bw=w*0.7, bh=h*0.045;
+    ctx.strokeStyle="#3a3328"; ctx.strokeRect(bx,by,bw,bh);
+    ctx.fillStyle=qber<0.11?"#7cff9a":"#ff8aa0";
+    ctx.fillRect(bx,by,bw*Math.min(1,qber/0.4),bh);
+    ctx.strokeStyle="#f0d78c"; ctx.setLineDash([3,3]);
+    ctx.beginPath(); ctx.moveTo(bx+bw*(0.11/0.4), by-2); ctx.lineTo(bx+bw*(0.11/0.4), by+bh+2); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle="#c9b89a"; ctx.font=`${Math.max(11,w*0.012)}px Palatino, serif`;
+    ctx.textAlign="left";
+    ctx.fillText("QBER  "+(100*qber).toFixed(1)+"%    (abort line 11%    Eve-theory 25%)", bx, by-8);
+    anim=Math.max(0,anim-0.02);
+  }
+  document.getElementById("n").oninput=e=>{N=+e.target.value;document.getElementById("nv").textContent=N; if(rounds.length) run();};
+  document.getElementById("eve").onchange=e=>{eve=e.target.checked; if(rounds.length) run();};
+  document.getElementById("run").onclick=run;
+  document.getElementById("reset").onclick=reset;
+  window.addEventListener("resize",resize);
+  resize(); update();
+  (function loop(ts){draw(ts*0.001);requestAnimationFrame(loop);})(0);
+  window.labRun=function(opts){ if(opts){ if(opts.n){N=opts.n;document.getElementById("n").value=N;document.getElementById("nv").textContent=N;} if("eve"in opts){eve=!!opts.eve;document.getElementById("eve").checked=eve;} } run(); };
+  window.labReady=true;
+})();
+</script>
+</body>
+</html>

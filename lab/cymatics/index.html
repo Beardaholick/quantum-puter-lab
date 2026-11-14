@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Live Cymatics</title>
+<link rel="stylesheet" href="../theme.css">
+
+<meta name="theme-color" content="#07060a">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<link rel="manifest" href="../../manifest.webmanifest">
+<link rel="apple-touch-icon" href="../../icons/apple-touch-icon.png">
+<script src="../../app-pwa.js" defer></script>
+
+<style>
+  .wrap { display: grid; grid-template-columns: 300px 1fr; min-height: calc(100vh - 54px); }
+  aside { padding: 1rem 1.1rem; border-right: 1px solid var(--line); background: #0c0a10; }
+  #plate { display: block; width: 100%; height: calc(100vh - 54px); }
+  @media (max-width: 800px) { .wrap { grid-template-columns: 1fr; } #plate { height: 70vh; } }
+</style>
+</head>
+<body>
+<div class="grain" aria-hidden="true"></div>
+<header>
+  <a class="back" href="../../index.html">← Lab</a>
+  <h1>LIVE CYMATICS</h1>
+  <p class="lede">Chladni plate driven by your microphone or a tone · wave physics, not quantum</p>
+</header>
+<div class="wrap">
+  <aside>
+    <label>Tone frequency <span id="fv">220</span> Hz</label>
+    <input id="freq" type="range" min="80" max="800" step="1" value="220">
+    <div class="row">
+      <button class="act primary" id="tone">Play tone</button>
+      <button class="act" id="mic">Use microphone</button>
+      <button class="act" id="mute">Mute</button>
+    </div>
+    <dl class="metrics" id="metrics"></dl>
+    <p class="honest">A square Chladni plate has modes sin(nπx)sin(mπy). Here the loudest FFT bins pick (n,m) pairs and we plot the squared mode sum — bright sand gathers at the nodes (near-zero displacement), a fair cartoon of a driven plate. Microphone access is optional; if it is denied, the oscillator still works. No quantum mechanics is involved.</p>
+  </aside>
+  <section class="stage"><canvas id="plate"></canvas></section>
+</div>
+<script>
+(function(){
+  const canvas=document.getElementById("plate");
+  const audio={ctx:null, osc:null, gain:null, anal:null, mic:null, src:"tone", f:220, muted:false};
+  const N=160;
+  let modes=[[3,2,1],[5,3,0.5],[4,4,0.3]];
+  let lastPeak=220;
+  function ensure(){
+    if(audio.ctx) return audio.ctx;
+    const Ctx=window.AudioContext||window.webkitAudioContext;
+    const ctx=new Ctx();
+    const gain=ctx.createGain(); gain.gain.value=0.08;
+    const anal=ctx.createAnalyser(); anal.fftSize=2048;
+    gain.connect(anal); anal.connect(ctx.destination);
+    audio.ctx=ctx; audio.gain=gain; audio.anal=anal;
+    return ctx;
+  }
+  function setTone(on){
+    const ctx=ensure(); ctx.resume();
+    if(audio.osc){try{audio.osc.stop();}catch(e){} audio.osc=null;}
+    if(!on) return;
+    const o=ctx.createOscillator(); o.type="sine"; o.frequency.value=audio.f;
+    o.connect(audio.gain); o.start(); audio.osc=o; audio.src="tone";
+  }
+  async function setMic(){
+    const ctx=ensure(); ctx.resume();
+    try{
+      const stream=await navigator.mediaDevices.getUserMedia({audio:true});
+      if(audio.osc){try{audio.osc.stop();}catch(e){} audio.osc=null;}
+      const src=ctx.createMediaStreamSource(stream);
+      src.connect(audio.anal);
+      audio.mic=stream; audio.src="mic";
+      audio.gain.gain.value=0; // don't loop the mic back at volume
+    }catch(e){
+      document.getElementById("metrics").innerHTML="<div><dt>mic</dt><dd>denied — using tone</dd></div>";
+      setTone(true);
+    }
+  }
+  function toneModes(hz){
+    return [[2+(Math.round(hz/70)%8),1+(Math.round(hz/110)%8),1,hz],
+            [3+(Math.round(hz/90)%6),2+(Math.round(hz/130)%6),0.45,hz*1.5],
+            [4+(Math.round(hz/50)%5),3+(Math.round(hz/80)%5),0.25,hz*2]];
+  }
+  function peaks(){
+    if(!audio.anal){
+      modes=toneModes(audio.f);
+      lastPeak=audio.f;
+      return;
+    }
+    const buf=new Uint8Array(audio.anal.frequencyBinCount);
+    audio.anal.getByteFrequencyData(buf);
+    const sr=audio.ctx.sampleRate, binHz=sr/audio.anal.fftSize;
+    const picked=[];
+    const copy=Array.from(buf);
+    for(let k=0;k<4;k++){
+      let mx=-1,ix=1;
+      for(let i=2;i<copy.length/4;i++) if(copy[i]>mx){mx=copy[i];ix=i;}
+      if(mx<4) break;
+      const hz=ix*binHz;
+      const n=2+(Math.round(hz/70)%8);
+      const m=1+(Math.round(hz/110)%8);
+      picked.push([n,m,mx/255,hz]);
+      for(let j=Math.max(2,ix-3);j<ix+4&&j<copy.length;j++) copy[j]=0;
+    }
+    if(picked.length){modes=picked; lastPeak=picked[0][3];}
+    else if(audio.src==="tone"){
+      const hz=audio.f;
+      modes=[[2+(Math.round(hz/70)%8),1+(Math.round(hz/110)%8),1,hz],
+             [3+(Math.round(hz/90)%6),2+(Math.round(hz/130)%6),0.45,hz*1.5]];
+      lastPeak=hz;
+    }
+  }
+  function resize(){const r=canvas.parentElement.getBoundingClientRect();const dpr=Math.min(2,devicePixelRatio||1);canvas.width=Math.floor(r.width*dpr);canvas.height=Math.floor(r.height*dpr);}
+  function draw(t){
+    peaks();
+    const ctx=canvas.getContext("2d");
+    const w=canvas.width,h=canvas.height;
+    ctx.fillStyle="#07060a"; ctx.fillRect(0,0,w,h);
+    const S=Math.min(w,h)*0.82, x0=(w-S)/2, y0=(h-S)/2;
+    const img=ctx.createImageData(N,N);
+    for(let y=0;y<N;y++) for(let x=0;x<N;x++){
+      const u=x/(N-1), v=y/(N-1);
+      let z=0;
+      for(const [n,m,amp] of modes){
+        z+=amp*Math.sin(n*Math.PI*u)*Math.sin(m*Math.PI*v);
+      }
+      z*=(0.85+0.15*Math.sin(t*2));
+      const nodal=Math.abs(z)<0.06?1:0;
+      const mag=Math.min(1,Math.abs(z)*1.6);
+      const o=(y*N+x)*4;
+      img.data[o]=Math.floor(20+mag*40+nodal*220);
+      img.data[o+1]=Math.floor(10+mag*20+nodal*180);
+      img.data[o+2]=Math.floor(16+mag*30+nodal*80);
+      img.data[o+3]=255;
+    }
+    const off=document.createElement("canvas"); off.width=N; off.height=N;
+    off.getContext("2d").putImageData(img,0,0);
+    ctx.imageSmoothingEnabled=true;
+    ctx.drawImage(off,x0,y0,S,S);
+    ctx.strokeStyle="#d4af37"; ctx.lineWidth=2; ctx.strokeRect(x0,y0,S,S);
+    document.getElementById("metrics").innerHTML=`
+      <div><dt>source</dt><dd>${audio.src}</dd></div>
+      <div><dt>peak</dt><dd>${lastPeak.toFixed(1)} Hz</dd></div>
+      <div><dt>modes</dt><dd>${modes.map(m=>nStr(m)).join(" · ")}</dd></div>`;
+  }
+  function nStr(m){return "("+m[0]+","+m[1]+")";}
+  document.getElementById("freq").oninput=e=>{
+    audio.f=+e.target.value; document.getElementById("fv").textContent=audio.f;
+    if(audio.osc) audio.osc.frequency.setTargetAtTime(audio.f, audio.ctx.currentTime, 0.03);
+  };
+  document.getElementById("tone").onclick=()=>{audio.gain&& (audio.gain.gain.value=0.08); setTone(true);};
+  document.getElementById("mic").onclick=setMic;
+  document.getElementById("mute").onclick=()=>{
+    if(!audio.ctx) return;
+    audio.muted=!audio.muted;
+    audio.gain.gain.value=audio.muted?0:(audio.src==="mic"?0:0.08);
+  };
+  window.addEventListener("resize",resize);
+  resize();
+  (function loop(ts){draw(ts*0.001);requestAnimationFrame(loop);})(0);
+  window.labReady=true;
+})();
+</script>
+</body>
+</html>
