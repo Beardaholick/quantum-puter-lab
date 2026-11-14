@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Grimoire Network · Soul-bond swapping</title>
+<link rel="stylesheet" href="../theme.css">
+
+<meta name="theme-color" content="#07060a">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<link rel="manifest" href="../../manifest.webmanifest">
+<link rel="apple-touch-icon" href="../../icons/apple-touch-icon.png">
+<script src="../../app-pwa.js" defer></script>
+
+<style>
+  .wrap { display: grid; grid-template-columns: 330px 1fr; min-height: calc(100vh - 54px); }
+  aside { padding: 1rem 1.1rem; border-right: 1px solid var(--line); background: #0c0a10; overflow: auto; }
+  #scene { display: block; width: 100%; height: calc(100vh - 54px); }
+  .phrases { display:flex; flex-direction:column; gap:0.35rem; margin:0.6rem 0; }
+  .phrases label { display:flex; gap:0.45rem; align-items:center; font-size:0.82rem; color:var(--ink-dim,#c9b89a); }
+  .phrases input { flex:1; background:#140f18; color:#f3e6c4; border:1px solid #3a3328; padding:0.28rem 0.4rem; font:inherit; }
+  .hint { color:#8a7a64; font-size:0.78rem; margin:0.4rem 0 0.8rem; }
+  @media (max-width: 800px) { .wrap { grid-template-columns: 1fr; } #scene { height: 70vh; } }
+</style>
+</head>
+<body>
+<div class="grain" aria-hidden="true"></div>
+<header>
+  <a class="back" href="../../index.html">← Lab</a>
+  <h1>GRIMOIRE NETWORK</h1>
+  <p class="lede">Shared sigil phrases as nodes · entanglement swapping weaves the bonds · monogamy is the law</p>
+</header>
+<div class="wrap">
+  <aside>
+    <div class="phrases" id="phrases"></div>
+    <p class="hint">Click two nodes to attempt a soul-bond (Bell swap of their threads). A node that has already spent its thread cannot form a second maximal bond — entanglement monogamy. Re-spin a thread to break a prior bond and try again.</p>
+    <div class="row">
+      <button class="act primary" id="spin">Spin all threads</button>
+      <button class="act" id="weave">Weave a matching</button>
+      <button class="act" id="reset">Reset</button>
+    </div>
+    <dl class="metrics" id="metrics"></dl>
+    <div id="bonds"></div>
+    <p class="honest">Four nodes, eight qubits. Node i holds a keep qubit k<sub>i</sub> and a thread t<sub>i</sub>, prepared in Φ⁺. A “bond” is entanglement swapping (Żukowski et al., 1993): a Bell measurement on t<sub>i</sub>t<sub>j</sub>, plus Pauli corrections on k<sub>j</sub>, leaves k<sub>i</sub>k<sub>j</sub> in Φ⁺ even though those qubits never interacted. CHSH on a bonded pair reaches the Tsirelson bound 2√2; on an unbonded pair it stays at the product-state value 0. A qubit already maximally entangled with one partner cannot be maximally entangled with another (Coffman–Kundu–Wootters monogamy). Phrases only label the nodes and tint the drawing; they do not conjure a metaphysical web. This is the same swap as Soul Bond, laid out as a small network.</p>
+  </aside>
+  <section class="stage"><canvas id="scene"></canvas></section>
+</div>
+<script>
+(function(){
+  const N=4, Q=8, D=256;
+  const DEFAULTS=["clarity focus spark","kindle the hidden fire","still the waters","open the gate"];
+  const COLORS=["#f0d78c","#00e5ff","#ff4fd8","#7cff9a"];
+  let phrases=DEFAULTS.slice();
+  let st=null, bonded=new Set(), used=new Uint8Array(N), bits=[], anim=0, lastPair=null;
+  const canvas=document.getElementById("scene");
+
+  function fresh(){const re=new Float64Array(D),im=new Float64Array(D);re[0]=1;return {re,im};}
+  function H(st,q){const c=Math.SQRT1_2,bit=1<<q,{re,im}=st;for(let i=0;i<D;i++){if(i&bit)continue;const j=i|bit,ar=re[i],ai=im[i],br=re[j],bi=im[j];re[i]=c*(ar+br);im[i]=c*(ai+bi);re[j]=c*(ar-br);im[j]=c*(ai-bi);}}
+  function CX(st,c,t){const cb=1<<c,tb=1<<t,{re,im}=st;for(let i=0;i<D;i++){if((i&cb)&&!(i&tb)){const j=i|tb,tr=re[i],ti=im[i];re[i]=re[j];im[i]=im[j];re[j]=tr;im[j]=ti;}}}
+  function X(st,q){const bit=1<<q,{re,im}=st;for(let i=0;i<D;i++){if(i&bit)continue;const j=i|bit;const tr=re[i],ti=im[i];re[i]=re[j];im[i]=im[j];re[j]=tr;im[j]=ti;}}
+  function Z(st,q){const bit=1<<q,{re,im}=st;for(let i=0;i<D;i++){if(i&bit){re[i]*=-1;im[i]*=-1;}}}
+  function correlator(st,qA,qB,thA,thB){
+    const ca=Math.cos(thA),sa=Math.sin(thA),cb=Math.cos(thB),sb=Math.sin(thB);
+    const bA=1<<qA,bB=1<<qB,{re,im}=st;
+    let ZZ=0,XX=0,ZX=0,XZ=0;
+    for(let i=0;i<D;i++){
+      const p=re[i]*re[i]+im[i]*im[i];
+      const za=(i&bA)?-1:1,zb=(i&bB)?-1:1;
+      ZZ+=p*za*zb;
+      const j=i^bA^bB; XX+=re[i]*re[j]+im[i]*im[j];
+      const k=i^bB; ZX+=(re[i]*re[k]+im[i]*im[k])*za;
+      const l=i^bA; XZ+=(re[i]*re[l]+im[i]*im[l])*zb;
+    }
+    return ca*cb*ZZ+ca*sb*ZX+sa*cb*XZ+sa*sb*XX;
+  }
+  function chsh(st,a,b){
+    return correlator(st,a,b,0,Math.PI/4)+correlator(st,a,b,0,-Math.PI/4)+correlator(st,a,b,Math.PI/2,Math.PI/4)-correlator(st,a,b,Math.PI/2,-Math.PI/4);
+  }
+  const keep=i=>2*i, thread=i=>2*i+1;
+  function edgeKey(i,j){return i<j?i+","+j:j+","+i;}
+
+  function spinAll(){
+    st=fresh();
+    bonded=new Set(); used=new Uint8Array(N); bits=[]; lastPair=null;
+    for(let i=0;i<N;i++){ H(st,keep(i)); CX(st,keep(i),thread(i)); }
+    anim=1; update();
+  }
+  function bond(i,j){
+    if(i===j) return {ok:false,why:"same node"};
+    if(!st) spinAll();
+    if(used[i]||used[j]) return {ok:false,why:"monogamy: a thread is already spent"};
+    const a=thread(i), b=thread(j), kA=keep(i), kB=keep(j);
+    CX(st,a,b); H(st,a);
+    const po=[0,0,0,0];
+    for(let s=0;s<D;s++){
+      const p=st.re[s]*st.re[s]+st.im[s]*st.im[s];
+      const m=((s>>a)&1) | (((s>>b)&1)<<1);
+      po[m]+=p;
+    }
+    let r=Math.random(),acc=0,m=0;
+    for(let k=0;k<4;k++){acc+=po[k]; if(r<=acc){m=k;break;}}
+    let nrm=0;
+    for(let s=0;s<D;s++){
+      const mm=((s>>a)&1) | (((s>>b)&1)<<1);
+      if(mm!==m){st.re[s]=0;st.im[s]=0;}
+      else nrm+=st.re[s]*st.re[s]+st.im[s]*st.im[s];
+    }
+    nrm=Math.sqrt(nrm)||1;
+    for(let s=0;s<D;s++){st.re[s]/=nrm;st.im[s]/=nrm;}
+    if(m&2) X(st,kB);
+    if(m&1) Z(st,kB);
+    used[i]=1; used[j]=1;
+    bonded.add(edgeKey(i,j));
+    bits.push({i,j,m,S:chsh(st,kA,kB)});
+    lastPair=[i,j];
+    anim=1; update();
+    return {ok:true,S:bits[bits.length-1].S};
+  }
+  function weave(){
+    spinAll();
+    bond(0,1); bond(2,3);
+  }
+  function reset(){st=null;bonded=new Set();used=new Uint8Array(N);bits=[];lastPair=null;update();}
+
+  function pairS(i,j){ return st?chsh(st,keep(i),keep(j)):0; }
+
+  const phBox=document.getElementById("phrases");
+  function renderPhrases(){
+    phBox.innerHTML="";
+    phrases.forEach((p,i)=>{
+      const lab=document.createElement("label");
+      lab.innerHTML=`<span style="color:${COLORS[i]};min-width:4.2rem">node ${i+1}</span>`;
+      const inp=document.createElement("input");
+      inp.value=p; inp.addEventListener("input",e=>{phrases[i]=e.target.value;});
+      lab.appendChild(inp); phBox.appendChild(lab);
+    });
+  }
+  renderPhrases();
+
+  function update(){
+    const rows=[];
+    for(let i=0;i<N;i++) for(let j=i+1;j<N;j++){
+      const S=st?pairS(i,j):0;
+      const isB=bonded.has(edgeKey(i,j));
+      rows.push(`<div><dt>${isB?"bond":"pair"} ${i+1}–${j+1}</dt><dd>S=${S.toFixed(3)}${isB?"  ✓":""}</dd></div>`);
+    }
+    document.getElementById("metrics").innerHTML=rows.join("");
+    document.getElementById("bonds").innerHTML = bits.length
+      ? bits.map(b=>`<p style="color:#c9b89a;font-size:0.85rem">swap ${b.i+1}↔${b.j+1}  Bell bits ${((b.m>>0)&1)}${((b.m>>1)&1)}  ·  S=${b.S.toFixed(3)}</p>`).join("")
+      : `<p style="color:#8a7a64;font-size:0.85rem">No bonds yet. Spin threads, then click two nodes.</p>`;
+  }
+
+  function layout(w,h){
+    const cx=w*0.5, cy=h*0.52, R=Math.min(w,h)*0.32;
+    return Array.from({length:N},(_,i)=>{
+      const a=-Math.PI/2+i*(Math.PI*2/N);
+      return {x:cx+R*Math.cos(a), y:cy+R*Math.sin(a), a};
+    });
+  }
+  let hover=-1, selected=-1;
+  function hit(x,y,w,h){
+    const pts=layout(w,h), r=Math.min(w,h)*0.07;
+    for(let i=0;i<N;i++){const dx=x-pts[i].x,dy=y-pts[i].y; if(dx*dx+dy*dy<r*r) return i;}
+    return -1;
+  }
+  canvas.addEventListener("mousemove",e=>{
+    const r=canvas.getBoundingClientRect(), dpr=canvas.width/r.width;
+    hover=hit((e.clientX-r.left)*dpr,(e.clientY-r.top)*dpr,canvas.width,canvas.height);
+  });
+  canvas.addEventListener("click",e=>{
+    const r=canvas.getBoundingClientRect(), dpr=canvas.width/r.width;
+    const i=hit((e.clientX-r.left)*dpr,(e.clientY-r.top)*dpr,canvas.width,canvas.height);
+    if(i<0) return;
+    if(selected<0){ selected=i; return; }
+    const res=bond(selected,i);
+    if(!res.ok){
+      document.getElementById("bonds").innerHTML=`<p style="color:#ff8aa0">${res.why}</p>`+document.getElementById("bonds").innerHTML;
+    }
+    selected=-1;
+  });
+
+  function resize(){const r=canvas.parentElement.getBoundingClientRect();const dpr=Math.min(2,devicePixelRatio||1);canvas.width=Math.floor(r.width*dpr);canvas.height=Math.floor(r.height*dpr);}
+  function draw(t){
+    const ctx=canvas.getContext("2d");
+    const w=canvas.width,h=canvas.height;
+    ctx.clearRect(0,0,w,h);
+    const pts=layout(w,h);
+    const rad=Math.min(w,h)*0.068;
+    // edges
+    for(let i=0;i<N;i++) for(let j=i+1;j<N;j++){
+      const S=st?pairS(i,j):0;
+      const isB=bonded.has(edgeKey(i,j));
+      ctx.beginPath(); ctx.moveTo(pts[i].x,pts[i].y); ctx.lineTo(pts[j].x,pts[j].y);
+      if(isB){
+        ctx.strokeStyle="#f0d78c"; ctx.lineWidth=3; ctx.globalAlpha=0.85;
+      } else {
+        ctx.strokeStyle="#3a3328"; ctx.lineWidth=1; ctx.globalAlpha=0.6;
+      }
+      ctx.stroke(); ctx.globalAlpha=1;
+      if(isB){
+        const mx=(pts[i].x+pts[j].x)/2, my=(pts[i].y+pts[j].y)/2;
+        ctx.fillStyle="#f0d78c"; ctx.font=`${Math.max(12,rad*0.32)}px ui-monospace, Menlo, monospace`;
+        ctx.textAlign="center"; ctx.fillText("S="+S.toFixed(3), mx, my-8);
+      }
+    }
+    pts.forEach((p,i)=>{
+      const on=used[i], hi=(i===hover||i===selected);
+      ctx.beginPath(); ctx.arc(p.x,p.y,rad*(hi?1.12:1),0,Math.PI*2);
+      ctx.fillStyle=on?"#1a1420":"#120e16";
+      ctx.fill();
+      ctx.strokeStyle=COLORS[i]; ctx.lineWidth=hi?3:1.6; ctx.stroke();
+      // thread ring
+      ctx.beginPath(); ctx.arc(p.x,p.y,rad*1.28,0,Math.PI*2);
+      ctx.strokeStyle=on?"#5a4038":"#00e5ff";
+      ctx.globalAlpha=on?0.35:0.55; ctx.setLineDash(on?[]:[4,4]); ctx.lineWidth=1; ctx.stroke();
+      ctx.setLineDash([]); ctx.globalAlpha=1;
+      ctx.fillStyle="#f3e6c4"; ctx.textAlign="center";
+      ctx.font=`${Math.max(11,rad*0.28)}px Palatino, serif`;
+      ctx.fillText(phrases[i], p.x, p.y+rad+18);
+      ctx.fillStyle=COLORS[i];
+      ctx.font=`${Math.max(13,rad*0.34)}px ui-monospace, Menlo, monospace`;
+      ctx.fillText((i+1)+ (on?" · bonded":" · free"), p.x, p.y+4);
+    });
+    ctx.fillStyle="#f0d78c";
+    ctx.font=`${Math.max(16,w*0.018)}px Palatino, serif`;
+    ctx.textAlign="center";
+    ctx.fillText("Grimoire Network  ·  entanglement swapping on a small graph", w/2, h*0.08);
+    ctx.fillStyle="#8a7a64";
+    ctx.font=`${Math.max(12,w*0.012)}px Palatino, serif`;
+    ctx.fillText(st?(bonded.size?"Gold edges violate CHSH (Tsirelson). Dim edges are product states. Monogamy forbids a third maximal bond.":"Threads spun. Click two free nodes to Bell-swap their threads."):"Spin all threads to give each node a Φ⁺ keep–thread pair.", w/2, h*0.93);
+    anim=Math.max(0,anim-0.02);
+  }
+  document.getElementById("spin").onclick=spinAll;
+  document.getElementById("weave").onclick=weave;
+  document.getElementById("reset").onclick=reset;
+  window.addEventListener("resize",resize);
+  resize(); update();
+  (function loop(ts){draw(ts*0.001);requestAnimationFrame(loop);})(0);
+  window.labWeave=weave; window.labBond=bond; window.labReady=true;
+})();
+</script>
+</body>
+</html>

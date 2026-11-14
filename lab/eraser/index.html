@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Delayed-Choice Quantum Eraser</title>
+<link rel="stylesheet" href="../theme.css">
+
+<meta name="theme-color" content="#07060a">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<link rel="manifest" href="../../manifest.webmanifest">
+<link rel="apple-touch-icon" href="../../icons/apple-touch-icon.png">
+<script src="../../app-pwa.js" defer></script>
+
+<style>
+  .wrap { display: grid; grid-template-columns: 310px 1fr; min-height: calc(100vh - 54px); }
+  aside { padding: 1rem 1.1rem; border-right: 1px solid var(--line); background: #0c0a10; overflow: auto; }
+  #view { display: block; width: 100%; height: calc(100vh - 54px); }
+  @media (max-width: 800px) { .wrap { grid-template-columns: 1fr; } #view { height: 70vh; } }
+</style>
+</head>
+<body>
+<div class="grain" aria-hidden="true"></div>
+<header>
+  <a class="back" href="../../index.html">← Lab</a>
+  <h1>QUANTUM ERASER</h1>
+  <p class="lede">Delayed choice · fringes return only in coincidence · no signal backwards</p>
+</header>
+<div class="wrap">
+  <aside>
+    <label>Mode</label>
+    <div class="row">
+      <button class="act" id="mOpen">Open (interfere)</button>
+      <button class="act" id="mPath">Which-path</button>
+      <button class="act primary" id="mErase">Eraser</button>
+    </div>
+    <label class="row" style="text-transform:none;letter-spacing:0;display:flex;gap:0.5rem;align-items:center;color:var(--ivory)">
+      <input type="checkbox" id="delayed" checked> Delayed choice (decide after the slits)
+    </label>
+    <label class="row" style="text-transform:none;letter-spacing:0;display:flex;gap:0.5rem;align-items:center;color:var(--ivory)">
+      <input type="checkbox" id="sort" checked> Sort coincidences (+ / −)
+    </label>
+    <div class="row"><button class="act" id="fire">Fire 800 photons</button></div>
+    <dl class="metrics" id="metrics"></dl>
+    <p class="honest">A photon at a double slit, with a partner (the “idler”) that can mark which slit. If the which-path mark is kept, the screen is a smooth lump — no fringes. If a later, even space-like, measurement of the idler <em>erases</em> that mark (a complementary basis), coincidences with one idler outcome show fringes, the other anti-fringes. Unsorted, the screen is still smooth. You cannot use this to send a message into the past: without the idler record, there is nothing to see. Wheeler’s delayed choice, Scully’s eraser — simulated here as a textbook wave model.</p>
+  </aside>
+  <section class="stage"><canvas id="view"></canvas></section>
+</div>
+<script>
+(function(){
+  const canvas=document.getElementById("view");
+  const BINS=120;
+  let mode="eraser", delayed=true, sort=true;
+  let hist={all:new Float64Array(BINS), plus:new Float64Array(BINS), minus:new Float64Array(BINS), n:0};
+  function reset(){hist={all:new Float64Array(BINS),plus:new Float64Array(BINS),minus:new Float64Array(BINS),n:0};}
+  function slitAmp(x,slit){
+    // Far-field double slit: a broad shared envelope so the two paths overlap,
+    // plus a path-length phase that prints fringes across the screen.
+    const env=Math.exp(-(x*x)/(2*0.42*0.42));
+    const phase= 14 * x * (slit<0?-1:1);
+    return [env*Math.cos(phase), env*Math.sin(phase)];
+  }
+  function fire(n){
+    for(let k=0;k<n;k++){
+      // sample a screen position with the correct probability for the mode
+      // rejection sampling on x in [-1,1]
+      let x=0, which="+", tries=0;
+      while(tries++<40){
+        x=Math.random()*2-1;
+        const aL=slitAmp(x,-1), aR=slitAmp(x,1);
+        let p=0, tag="+";
+        if(mode==="open"){
+          const re=aL[0]+aR[0], im=aL[1]+aR[1];
+          p=re*re+im*im;
+        } else if(mode==="path"){
+          p=(aL[0]*aL[0]+aL[1]*aL[1])+(aR[0]*aR[0]+aR[1]*aR[1]);
+        } else {
+          // eraser: idler in +/− (symmetric/antisymmetric) basis
+          // + coincidence: |L+R|^2, − : |L−R|^2
+          tag = Math.random()<0.5?"+":"-";
+          if(tag==="+"){
+            const re=aL[0]+aR[0], im=aL[1]+aR[1]; p=re*re+im*im;
+          } else {
+            const re=aL[0]-aR[0], im=aL[1]-aR[1]; p=re*re+im*im;
+          }
+        }
+        if(Math.random()<p/4.2){ which=tag; break; }
+      }
+      const b=Math.max(0,Math.min(BINS-1,Math.floor((x+1)/2*BINS)));
+      hist.all[b]++; hist.n++;
+      if(which==="+") hist.plus[b]++; else hist.minus[b]++;
+    }
+  }
+  function resize(){const r=canvas.parentElement.getBoundingClientRect();const dpr=Math.min(2,devicePixelRatio||1);canvas.width=Math.floor(r.width*dpr);canvas.height=Math.floor(r.height*dpr);}
+  function draw(){
+    const ctx=canvas.getContext("2d");
+    const w=canvas.width,h=canvas.height;
+    ctx.clearRect(0,0,w,h);
+    // apparatus
+    const ySlit=h*0.22, yScr=h*0.78, xC=w*0.5;
+    ctx.strokeStyle="#8a7a64"; ctx.lineWidth=2;
+    ctx.beginPath(); ctx.moveTo(w*0.12,h*0.08); ctx.lineTo(w*0.12,ySlit-10); ctx.stroke();
+    ctx.fillStyle="#f0d78c"; ctx.beginPath(); ctx.arc(w*0.12,h*0.08,5,0,Math.PI*2); ctx.fill();
+    ctx.fillStyle="#8a7a64"; ctx.font=`${Math.max(11,w*0.014)}px Palatino, serif`;
+    ctx.fillText("source", w*0.12+10, h*0.08+4);
+    // wall with two slits
+    ctx.strokeStyle="#d4af37"; ctx.beginPath(); ctx.moveTo(w*0.08,ySlit); ctx.lineTo(w*0.92,ySlit); ctx.stroke();
+    ctx.fillStyle="#07060a";
+    [[-0.18],[0.18]].forEach(([s])=>{
+      const x=xC+s*(w*0.35);
+      ctx.fillRect(x-8,ySlit-6,16,12);
+      ctx.strokeStyle="#00e5ff"; ctx.strokeRect(x-8,ySlit-6,16,12);
+    });
+    ctx.fillStyle="#8a7a64"; ctx.fillText(delayed&&mode!=="open"?"idler measured later →":"", w*0.62, ySlit-16);
+    // screen
+    const x0=w*0.12, x1=w*0.88, sw=x1-x0, sh=h*0.16;
+    function bars(arr,col,alpha){
+      const mx=Math.max(1,...arr);
+      ctx.globalAlpha=alpha; ctx.fillStyle=col;
+      for(let i=0;i<BINS;i++){
+        const bh=(arr[i]/mx)*sh;
+        const x=x0+(i/BINS)*sw;
+        ctx.fillRect(x, yScr-bh, sw/BINS+0.5, bh);
+      }
+      ctx.globalAlpha=1;
+    }
+    ctx.strokeStyle="#3a3328"; ctx.strokeRect(x0,yScr-sh,sw,sh);
+    if(mode==="eraser" && sort){
+      bars(hist.plus,"#00e5ff",0.85);
+      bars(hist.minus,"#ff4fd8",0.55);
+    } else {
+      bars(hist.all,"#f0d78c",0.9);
+    }
+    ctx.fillStyle="#8a7a64";
+    ctx.fillText("detection screen  (coincidence subsets in eraser + sort)", x0, yScr+18);
+    ctx.fillStyle="#f0d78c";
+    ctx.font=`${Math.max(16,w*0.018)}px Palatino, serif`;
+    ctx.textAlign="center";
+    const title=mode==="open"?"Interference (no which-path)":mode==="path"?"Which-path marked — fringes gone":(sort?"Eraser: + fringes / − anti-fringes":"Eraser unsorted — looks featureless");
+    ctx.fillText(title, w/2, h*0.48);
+    ctx.textAlign="left";
+    document.getElementById("metrics").innerHTML=`
+      <div><dt>mode</dt><dd>${mode}${delayed?" · delayed":""}</dd></div>
+      <div><dt>photons</dt><dd>${hist.n}</dd></div>
+      <div><dt>sorted</dt><dd>${mode==="eraser"&&sort?"+ / − shown":"total only"}</dd></div>`;
+    // highlight mode buttons
+    ["mOpen","mPath","mErase"].forEach(id=>document.getElementById(id).classList.remove("on"));
+    document.getElementById(mode==="open"?"mOpen":mode==="path"?"mPath":"mErase").classList.add("on");
+  }
+  function setMode(m){mode=m;reset();fire(800);draw();}
+  document.getElementById("mOpen").onclick=()=>setMode("open");
+  document.getElementById("mPath").onclick=()=>setMode("path");
+  document.getElementById("mErase").onclick=()=>setMode("eraser");
+  document.getElementById("delayed").onchange=e=>{delayed=e.target.checked;draw();};
+  document.getElementById("sort").onchange=e=>{sort=e.target.checked;draw();};
+  document.getElementById("fire").onclick=()=>{fire(800);draw();};
+  window.addEventListener("resize",()=>{resize();draw();});
+  resize(); fire(800); draw();
+  window.labReady=true;
+})();
+</script>
+</body>
+</html>

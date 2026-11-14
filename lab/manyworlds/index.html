@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Many-Worlds Decision</title>
+<link rel="stylesheet" href="../theme.css">
+
+<meta name="theme-color" content="#07060a">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<link rel="manifest" href="../../manifest.webmanifest">
+<link rel="apple-touch-icon" href="../../icons/apple-touch-icon.png">
+<script src="../../app-pwa.js" defer></script>
+
+<style>
+  .wrap { display: grid; grid-template-columns: 300px 1fr; min-height: calc(100vh - 54px); }
+  aside { padding: 1rem 1.1rem; border-right: 1px solid var(--line); background: #0c0a10; overflow: auto; }
+  #tree { display: block; width: 100%; height: calc(100vh - 54px); }
+  .choices label { margin-top: 0.7rem; }
+  @media (max-width: 800px) { .wrap { grid-template-columns: 1fr; } #tree { height: 70vh; } }
+</style>
+</head>
+<body>
+<div class="grain" aria-hidden="true"></div>
+<header>
+  <a class="back" href="../../index.html">← Lab</a>
+  <h1>MANY-WORLDS DECISION</h1>
+  <p class="lede">A branching statevector for three choices · inhabit one world, the rest stay weighted</p>
+</header>
+<div class="wrap">
+  <aside>
+    <p class="honest" style="margin-top:0">Each choice is a qubit rotation. Bias the coin; the branch widths are |amplitude|². Click a leaf to inhabit that world.</p>
+    <div class="choices">
+      <label>Stay vs Go · bias <span id="b0v">0.50</span></label>
+      <input id="b0" type="range" min="0.05" max="0.95" step="0.01" value="0.50">
+      <label>Speak vs Wait · bias <span id="b1v">0.50</span></label>
+      <input id="b1" type="range" min="0.05" max="0.95" step="0.01" value="0.50">
+      <label>Trust vs Doubt · bias <span id="b2v">0.50</span></label>
+      <input id="b2" type="range" min="0.05" max="0.95" step="0.01" value="0.50">
+    </div>
+    <div class="row">
+      <button class="act primary" id="fork">Fork the wave</button>
+      <button class="act" id="clear">Clear inhabit</button>
+    </div>
+    <dl class="metrics" id="metrics"></dl>
+    <p class="honest">This is the mathematics of a three-qubit product state (or a slightly entangled one if you fork). Many-worlds is an interpretation of the Schrödinger equation: every branch “stays.” Collapse is another interpretation of the same numbers. We do not prove which story is true. We only draw the tree of amplitudes.</p>
+  </aside>
+  <section class="stage"><canvas id="tree"></canvas></section>
+</div>
+<script>
+(function(){
+  const canvas=document.getElementById("tree");
+  const LABELS=[["STAY","GO"],["SPEAK","WAIT"],["TRUST","DOUBT"]];
+  let bias=[0.5,0.5,0.5], inhabit=null, hover=null;
+  function amps(){
+    // product state: qubit i has P(0)=bias[i]
+    const a=[];
+    for(let i=0;i<8;i++){
+      let p=1, path=[];
+      for(let q=0;q<3;q++){
+        const bit=(i>>q)&1;
+        path.push(bit);
+        p*= bit? (1-bias[q]) : bias[q];
+      }
+      a.push({i,p,path,amp:Math.sqrt(p)});
+    }
+    return a;
+  }
+  function layout(w,h){
+    const A=amps();
+    const nodes=[{id:"r",x:40,y:h/2,label:"YOU",p:1,depth:-1,idx:null}];
+    const edges=[];
+    // depth 0,1,2
+    function xOf(d){return 40+(w-90)*(d+1)/3.15;}
+    // after first fork: 2 nodes, then 4, then 8
+    const col=[[],[],[]];
+    for(let b=0;b<2;b++){
+      const p=b?1-bias[0]:bias[0];
+      const n={id:"0"+b,x:xOf(0),y:h*(0.28+b*0.44),label:LABELS[0][b],p,depth:0,bit:b,mask:b,bits:[b]};
+      col[0].push(n); nodes.push(n); edges.push({a:"r",b:n.id,p});
+    }
+    for(let i=0;i<2;i++) for(let b=0;b<2;b++){
+      const parent=col[0][i];
+      const p=parent.p*(b?1-bias[1]:bias[1]);
+      const n={id:"1"+i+b,x:xOf(1),y:h*(0.14+ (i*2+b)*0.24),label:LABELS[1][b],p,depth:1,bit:b,bits:parent.bits.concat([b])};
+      col[1].push(n); nodes.push(n); edges.push({a:parent.id,b:n.id,p});
+    }
+    let k=0;
+    col[1].forEach(parent=>{
+      for(let b=0;b<2;b++){
+        const leaf=A.find(L=>L.path[0]===parent.bits[0]&&L.path[1]===parent.bits[1]&&L.path[2]===b);
+        const n={id:"L"+leaf.i,x:xOf(2),y:h*(0.08+k*0.11),label:LABELS[2][b],p:leaf.p,depth:2,bit:b,bits:leaf.path,idx:leaf.i,leaf:true};
+        col[2].push(n); nodes.push(n); edges.push({a:parent.id,b:n.id,p:leaf.p});
+        k++;
+      }
+    });
+    return {nodes,edges,leaves:col[2]};
+  }
+  function resize(){const r=canvas.parentElement.getBoundingClientRect();const dpr=Math.min(2,devicePixelRatio||1);canvas.width=Math.floor(r.width*dpr);canvas.height=Math.floor(r.height*dpr);}
+  function hit(L,x,y){
+    for(const n of L.leaves){
+      if(Math.hypot(x-n.x,y-n.y)<18) return n.idx;
+    }
+    return null;
+  }
+  function draw(){
+    const ctx=canvas.getContext("2d");
+    const w=canvas.width,h=canvas.height;
+    ctx.clearRect(0,0,w,h);
+    const L=layout(w,h);
+    const onPath=new Set();
+    if(inhabit!=null){
+      const bits=L.leaves[inhabit].bits;
+      onPath.add("r");
+      onPath.add("0"+bits[0]);
+      onPath.add("1"+bits[0]+bits[1]);
+      onPath.add("L"+inhabit);
+    }
+    L.edges.forEach(e=>{
+      const a=L.nodes.find(n=>n.id===e.a), b=L.nodes.find(n=>n.id===e.b);
+      const lit=inhabit==null || (onPath.has(e.a)&&onPath.has(e.b));
+      ctx.strokeStyle=lit?"#d4af37":"#3a3328";
+      ctx.globalAlpha=lit?0.9:0.35;
+      ctx.lineWidth=1+Math.max(0.6, e.p*14);
+      ctx.beginPath(); ctx.moveTo(a.x,a.y); ctx.lineTo(b.x,b.y); ctx.stroke();
+    });
+    L.nodes.forEach(n=>{
+      const lit=inhabit==null || onPath.has(n.id);
+      ctx.globalAlpha=lit?1:0.3;
+      ctx.fillStyle=n.leaf?(hover===n.idx||inhabit===n.idx)?"#f0d78c":"#00e5ff":"#f0d78c";
+      ctx.beginPath(); ctx.arc(n.x,n.y, n.id==="r"?10:7,0,Math.PI*2); ctx.fill();
+      ctx.fillStyle="#f3e6c4";
+      ctx.font=`${Math.max(11,w*0.012)}px Palatino, serif`;
+      ctx.textAlign="left";
+      const tag=n.leaf? (n.label+"  "+(n.p*100).toFixed(1)+"%") : n.label;
+      ctx.fillText(tag, n.x+12, n.y+4);
+    });
+    ctx.globalAlpha=1;
+    const A=amps();
+    document.getElementById("metrics").innerHTML=`
+      <div><dt>worlds</dt><dd>8 leaves</dd></div>
+      <div><dt>inhabited</dt><dd>${inhabit==null?"(all still present)":A[inhabit].path.map((b,i)=>LABELS[i][b]).join(" · ")}</dd></div>
+      <div><dt>P(this world)</dt><dd>${inhabit==null?"—":A[inhabit].p.toFixed(4)}</dd></div>`;
+    canvas._layout=L;
+  }
+  canvas.addEventListener("mousemove",e=>{
+    const r=canvas.getBoundingClientRect();
+    const x=(e.clientX-r.left)*canvas.width/r.width, y=(e.clientY-r.top)*canvas.height/r.height;
+    if(!canvas._layout)return;
+    hover=hit(canvas._layout,x,y);
+    canvas.style.cursor=hover!=null?"pointer":"default";
+  });
+  canvas.addEventListener("click",e=>{
+    const r=canvas.getBoundingClientRect();
+    const x=(e.clientX-r.left)*canvas.width/r.width, y=(e.clientY-r.top)*canvas.height/r.height;
+    const i=canvas._layout?hit(canvas._layout,x,y):null;
+    if(i!=null) inhabit=i;
+    draw();
+  });
+  ["b0","b1","b2"].forEach((id,i)=>{
+    document.getElementById(id).oninput=e=>{
+      bias[i]=+e.target.value;
+      document.getElementById("b"+i+"v").textContent=bias[i].toFixed(2);
+      draw();
+    };
+  });
+  document.getElementById("fork").onclick=()=>{inhabit=null;draw();};
+  document.getElementById("clear").onclick=()=>{inhabit=null;draw();};
+  window.addEventListener("resize",()=>{resize();draw();});
+  resize(); draw();
+  window.labInhabit=function(i){inhabit=i;draw();}; window.labReady=true;
+})();
+</script>
+</body>
+</html>
