@@ -1,7 +1,8 @@
 :root { --tab-h: 4.15rem; }
 html, body { background: var(--obsidian); }
 body.app { padding-bottom: calc(var(--tab-h) + env(safe-area-inset-bottom, 0px)); min-height: 100dvh; }
-.app-top {
+header.app-top, .app-top {
+  justify-content: flex-start;
   position: sticky; top: 0; z-index: 5;
   display: flex; align-items: center; gap: 0.85rem;
   padding: calc(0.7rem + env(safe-area-inset-top, 0px)) 1.15rem 0.7rem;

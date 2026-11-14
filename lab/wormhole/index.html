@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Wormhole · traversable analogue</title>
+<link rel="stylesheet" href="../theme.css">
+
+<meta name="theme-color" content="#07060a">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<link rel="manifest" href="../../manifest.webmanifest">
+<link rel="apple-touch-icon" href="../../icons/apple-touch-icon.png">
+<script src="../../app-pwa.js" defer></script>
+
+<style>
+  .wrap { display: grid; grid-template-columns: 330px 1fr; min-height: calc(100vh - 54px); }
+  aside { padding: 1rem 1.1rem; border-right: 1px solid var(--line); background: #0c0a10; overflow: auto; }
+  #scene { display: block; width: 100%; height: calc(100vh - 54px); }
+  label.sl { display:flex; justify-content:space-between; align-items:center; gap:0.6rem; color:#c9b89a; font-size:0.85rem; margin:0.45rem 0; }
+  input[type=range]{ flex:1; }
+  @media (max-width: 800px) { .wrap { grid-template-columns: 1fr; } #scene { height: 70vh; } }
+</style>
+</head>
+<body>
+<div class="grain" aria-hidden="true"></div>
+<header>
+  <a class="back" href="../../index.html">← Lab</a>
+  <h1>WORMHOLE</h1>
+  <p class="lede">A 7-qubit analogue of traversable-wormhole teleportation · not a spacetime throat</p>
+</header>
+<div class="wrap">
+    <aside>
+    <label class="sl">θ (message) <span id="thv">1.05</span>
+      <input id="theta" type="range" min="0" max="3.1416" step="0.01" value="1.05">
+    </label>
+    <label class="sl">φ (message) <span id="phv">0.70</span>
+      <input id="phi" type="range" min="0" max="6.2832" step="0.01" value="0.70">
+    </label>
+    <label class="sl">coupling g <span id="gv">2.16</span>
+      <input id="g" type="range" min="0" max="6.2832" step="0.01" value="2.16">
+    </label>
+    <label class="sl">scramble layers <span id="lv">2</span>
+      <input id="layers" type="range" min="1" max="4" step="1" value="2">
+    </label>
+    <div class="row">
+      <button class="act primary" id="run">Drop the message</button>
+      <button class="act" id="reset">Reset</button>
+    </div>
+    <dl class="metrics" id="metrics"></dl>
+    <p class="honest">A 7-qubit circuit analogue of traversable-wormhole teleportation, in the spirit of Gao–Jafferis–Wall (2016/17) and the Google 2022 SYK-inspired experiment (Nature 612, 51). The two “mouths” L and R are three-qubit registers prepared in a thermofield-double stand-in: three Bell pairs. A message qubit is swapped into L after U†, so it is injected “in the past” of a short scrambling unitary U; a two-sided coupling ∏ exp(−i g Z<sub>L<sub>i</sub></sub> Z<sub>R<sub>i</sub></sub> / 2) is applied; U† then runs on R. If the coupling is tuned, part of the message reappears on R<sub>0</sub> and F(R<sub>0</sub>, ψ) rises above the ½ noise floor — size-winding / Hayden–Preskill-style reconstruction on a handful of qubits. This is not a spacetime wormhole, not an Einstein–Rosen bridge, and not a gravity simulation beyond a very small circuit caricature. The curve F(g) is exact for this statevector, not a marketing graphic.</p>
+  </aside>
+  <section class="stage"><canvas id="scene"></canvas></section>
+</div>
+<script>
+(function(){
+  const canvas=document.getElementById("scene");
+  const D=128; // 7 qubits: 0=msg, 1,2,3=L, 4,5,6=R
+  let theta=1.05, phi=0.70, g=2.16, layers=2, st=null, fid=0, curve=[], anim=0, ran=false;
+
+  function fresh(){const re=new Float64Array(D),im=new Float64Array(D);re[0]=1;return {re,im};}
+  function H(st,q){const c=Math.SQRT1_2,bit=1<<q,{re,im}=st;for(let i=0;i<D;i++){if(i&bit)continue;const j=i|bit,ar=re[i],ai=im[i],br=re[j],bi=im[j];re[i]=c*(ar+br);im[i]=c*(ai+bi);re[j]=c*(ar-br);im[j]=c*(ai-bi);}}
+  function CX(st,c,t){const cb=1<<c,tb=1<<t,{re,im}=st;for(let i=0;i<D;i++){if((i&cb)&&!(i&tb)){const j=i|tb,tr=re[i],ti=im[i];re[i]=re[j];im[i]=im[j];re[j]=tr;im[j]=ti;}}}
+  function SWAP(st,a,b){CX(st,a,b);CX(st,b,a);CX(st,a,b);}
+  function RY(st,q,th){
+    const c=Math.cos(th/2),s=Math.sin(th/2),bit=1<<q,{re,im}=st;
+    for(let i=0;i<D;i++){
+      if(i&bit) continue;
+      const j=i|bit,ar=re[i],ai=im[i],br=re[j],bi=im[j];
+      re[i]=c*ar-s*br; im[i]=c*ai-s*bi;
+      re[j]=s*ar+c*br; im[j]=s*ai+c*bi;
+    }
+  }
+  function RZ(st,q,th){
+    const c=Math.cos(th/2),s=Math.sin(th/2),bit=1<<q,{re,im}=st;
+    for(let i=0;i<D;i++){
+      const r=re[i],iv=im[i];
+      if(i&bit){ re[i]=r*c-iv*s; im[i]=r*s+iv*c; } // e^{+i θ/2}
+      else     { re[i]=r*c+iv*s; im[i]=-r*s+iv*c; } // e^{-i θ/2}
+    }
+  }
+  function RZZ(st,a,b,ang){
+    const ba=1<<a,bb=1<<b,c=Math.cos(ang/2),s=Math.sin(ang/2),{re,im}=st;
+    for(let i=0;i<D;i++){
+      const zz=((i&ba)?-1:1)*((i&bb)?-1:1);
+      const pr=c, pi=-zz*s, r=re[i],iv=im[i];
+      re[i]=r*pr-iv*pi; im[i]=r*pi+iv*pr;
+    }
+  }
+  function RXX(st,a,b,ang){ H(st,a); H(st,b); RZZ(st,a,b,ang); H(st,a); H(st,b); }
+
+  const ANGS=[
+    [0.63,1.21,0.44],
+    [1.07,0.31,0.88],
+    [0.52,0.95,1.33],
+    [0.81,0.27,1.14]
+  ];
+  const PAIRS=[[[0,1],[1,2],[0,2]],[[1,2],[0,1],[2,0]],[[0,2],[0,1],[1,2]],[[2,0],[1,2],[0,1]]];
+  function scramble(st,qs,inv,L){
+    const seq=[];
+    for(let li=0;li<L;li++) seq.push(li);
+    if(inv) seq.reverse();
+    for(const li of seq){
+      if(!inv){
+        qs.forEach((q,k)=>RY(st,q,ANGS[li][k]));
+        PAIRS[li].forEach(([a,b])=>CX(st,qs[a],qs[b]));
+      } else {
+        PAIRS[li].slice().reverse().forEach(([a,b])=>CX(st,qs[a],qs[b]));
+        qs.forEach((q,k)=>RY(st,q,-ANGS[li][k]));
+      }
+    }
+  }
+  function targetAmps(th,ph){
+    // RY then RZ on |0>: RY|0>=(c,s), then RZ
+    const c=Math.cos(th/2),s=Math.sin(th/2);
+    const zc=Math.cos(ph/2),zs=Math.sin(ph/2);
+    // |0> gets e^{-i φ/2}, |1> gets e^{+i φ/2}
+    return [c*zc, -c*zs, s*zc, s*zs];
+  }
+  function fidQubit(st,q,th,ph){
+    const t=targetAmps(th,ph);
+    const r=[[0,0],[0,0]],im=[[0,0],[0,0]];
+    const bit=1<<q;
+    for(let a=0;a<2;a++) for(let b=0;b<2;b++){
+      let sr=0,si=0;
+      for(let i=0;i<D;i++){
+        if( ((i>>q)&1)!==a ) continue;
+        const j=(i & ~bit) | (b<<q);
+        sr+=st.re[i]*st.re[j]+st.im[i]*st.im[j];
+        si+=st.im[i]*st.re[j]-st.re[i]*st.im[j];
+      }
+      r[a][b]=sr; im[a][b]=si;
+    }
+    const b0r=t[0],b0i=t[1],b1r=t[2],b1i=t[3];
+    const v0r=r[0][0]*b0r-im[0][0]*b0i + r[0][1]*b1r-im[0][1]*b1i;
+    const v0i=r[0][0]*b0i+im[0][0]*b0r + r[0][1]*b1i+im[0][1]*b1r;
+    const v1r=r[1][0]*b0r-im[1][0]*b0i + r[1][1]*b1r-im[1][1]*b1i;
+    const v1i=r[1][0]*b0i+im[1][0]*b0r + r[1][1]*b1i+im[1][1]*b1r;
+    return b0r*v0r + b0i*v0i + b1r*v1r + b1i*v1i;
+  }
+
+  function protocol(gv, L, th, ph){
+    const s=fresh();
+    RY(s,0,th); RZ(s,0,ph);
+    H(s,1); CX(s,1,4);
+    H(s,2); CX(s,2,5);
+    H(s,3); CX(s,3,6);
+    const Lq=[1,2,3], Rq=[4,5,6];
+    scramble(s,Lq,true,L);   // U† on L
+    SWAP(s,0,1);            // drop the message into L0 “in the past”
+    scramble(s,Lq,false,L);  // U on L  (scrambles the injection)
+    for(let i=0;i<3;i++) RZZ(s,Lq[i],Rq[i],gv); // two-sided ZZ coupling
+    scramble(s,Rq,true,L);   // U† on R  (the thermo time-reversal of the other mouth)
+    return {st:s, F:fidQubit(s,4,th,ph), Fmsg:fidQubit(s,0,th,ph)};
+  }
+  function sweep(){
+    curve=[];
+    const n=41;
+    for(let i=0;i<n;i++){
+      const gv=i/(n-1)*Math.PI*2;
+      curve.push({g:gv, F:protocol(gv,layers,theta,phi).F});
+    }
+  }
+  function run(){
+    sweep();
+    const out=protocol(g,layers,theta,phi);
+    st=out.st; fid=out.F; ran=true; anim=1; update();
+  }
+  function update(){
+    const peak=curve.reduce((a,b)=>b.F>a.F?b:a, {F:-1,g:0});
+    document.getElementById("metrics").innerHTML=`
+      <div><dt>F(R₀, ψ)</dt><dd>${ran?fid.toFixed(4):"—"}</dd></div>
+      <div><dt>F at g=0</dt><dd>${curve.length?curve[0].F.toFixed(4):"—"}</dd></div>
+      <div><dt>peak F</dt><dd>${curve.length?peak.F.toFixed(4)+"  @ g="+peak.g.toFixed(2):"—"}</dd></div>
+      <div><dt>coupling g</dt><dd>${g.toFixed(2)}</dd></div>`;
+  }
+  function resize(){const r=canvas.parentElement.getBoundingClientRect();const dpr=Math.min(2,devicePixelRatio||1);canvas.width=Math.floor(r.width*dpr);canvas.height=Math.floor(r.height*dpr);}
+  function mouth(ctx,cx,cy,R,side,col,glow){
+    ctx.save();
+    const grd=ctx.createRadialGradient(cx,cy,R*0.15,cx,cy,R);
+    grd.addColorStop(0, glow?"#1a1020":"#0a0810");
+    grd.addColorStop(1, "#0000");
+    ctx.fillStyle=grd; ctx.beginPath(); ctx.arc(cx,cy,R,0,Math.PI*2); ctx.fill();
+    ctx.strokeStyle=col; ctx.lineWidth=2; ctx.beginPath();
+    ctx.ellipse(cx,cy,R*0.55,R,0,0,Math.PI*2); ctx.stroke();
+    ctx.globalAlpha=0.55; ctx.beginPath();
+    ctx.ellipse(cx,cy,R*0.28,R*0.7,0,0,Math.PI*2); ctx.stroke();
+    ctx.globalAlpha=1;
+    ctx.fillStyle="#f3e6c4"; ctx.font=`${Math.max(12,R*0.18)}px Palatino, serif`;
+    ctx.textAlign="center"; ctx.fillText(side, cx, cy+R+18);
+    ctx.restore();
+  }
+  function draw(t){
+    const ctx=canvas.getContext("2d");
+    const w=canvas.width,h=canvas.height;
+    ctx.clearRect(0,0,w,h);
+    ctx.fillStyle="#f0d78c";
+    ctx.font=`${Math.max(15,w*0.017)}px Palatino, serif`;
+    ctx.textAlign="center";
+    ctx.fillText("Traversable-wormhole analogue  ·  3 + 3 + message", w/2, h*0.07);
+    ctx.fillStyle="#8a7a64";
+    ctx.font=`${Math.max(11,w*0.012)}px Palatino, serif`;
+    ctx.fillText("Gao–Jafferis–Wall / Google 2022 SYK-inspired  ·  a small scrambling circuit, not a curved spacetime", w/2, h*0.115);
+
+    const yM=h*0.42, R=Math.min(w,h)*0.16;
+    const Lx=w*0.28, Rx=w*0.72;
+    mouth(ctx,Lx,yM,R,"LEFT mouth  L", "#00e5ff", ran);
+    mouth(ctx,Rx,yM,R,"RIGHT mouth  R", "#ff4fd8", ran && fid>0.7);
+    // throat
+    ctx.strokeStyle="#d4af37"; ctx.globalAlpha=0.35+0.25*Math.max(0,(fid-0.5)*2);
+    ctx.lineWidth=Math.max(2,8*Math.max(0,fid-0.4));
+    ctx.beginPath(); ctx.moveTo(Lx+R*0.5,yM); ctx.bezierCurveTo((Lx+Rx)/2, yM-R*0.6, (Lx+Rx)/2, yM+R*0.6, Rx-R*0.5,yM);
+    ctx.stroke(); ctx.globalAlpha=1;
+    // message token
+    const travel=ran?Math.min(1,0.15+0.85*Math.max(0,(fid-0.35)/0.6)):0;
+    const mx=Lx+(Rx-Lx)*travel, my=yM+Math.sin(t*2)*4;
+    ctx.fillStyle=fid>0.7?"#f0d78c":"#8a7a64";
+    ctx.beginPath(); ctx.arc(mx,my,7,0,Math.PI*2); ctx.fill();
+    ctx.fillStyle="#f3e6c4"; ctx.font=`${Math.max(11,w*0.012)}px Palatino, serif`;
+    ctx.fillText(ran?("F = "+fid.toFixed(3)):"ψ", mx, my-14);
+
+    // F(g) curve
+    const bx=w*0.12, by=h*0.68, bw=w*0.76, bh=h*0.22;
+    ctx.strokeStyle="#3a3328"; ctx.strokeRect(bx,by,bw,bh);
+    ctx.fillStyle="#8a7a64"; ctx.font=`${Math.max(11,w*0.011)}px Palatino, serif`;
+    ctx.textAlign="left"; ctx.fillText("F(R₀, ψ)  vs  coupling g", bx, by-8);
+    ctx.textAlign="right"; ctx.fillText("2π", bx+bw, by+bh+14);
+    ctx.textAlign="left"; ctx.fillText("0", bx, by+bh+14);
+    if(curve.length){
+      ctx.beginPath();
+      curve.forEach((p,i)=>{
+        const x=bx+bw*(p.g/(Math.PI*2)), y=by+bh-bh*Math.max(0,Math.min(1,p.F));
+        if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+      });
+      ctx.strokeStyle="#00e5ff"; ctx.lineWidth=2; ctx.stroke();
+      const xg=bx+bw*(g/(Math.PI*2));
+      ctx.strokeStyle="#f0d78c"; ctx.setLineDash([4,3]);
+      ctx.beginPath(); ctx.moveTo(xg,by); ctx.lineTo(xg,by+bh); ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle="#f0d78c"; ctx.beginPath();
+      const yg=by+bh-bh*Math.max(0,Math.min(1,fid));
+      ctx.arc(xg,yg,4,0,Math.PI*2); ctx.fill();
+    }
+    ctx.strokeStyle="#5a4038"; ctx.setLineDash([2,3]);
+    ctx.beginPath(); ctx.moveTo(bx, by+bh*0.5); ctx.lineTo(bx+bw, by+bh*0.5); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle="#5a4038"; ctx.font=`${Math.max(10,w*0.01)}px Palatino, serif`;
+    ctx.fillText("F=0.5  (no transfer)", bx+8, by+bh*0.5-6);
+    anim=Math.max(0,anim-0.02);
+  }
+  document.getElementById("theta").oninput=e=>{theta=+e.target.value;document.getElementById("thv").textContent=theta.toFixed(2); if(ran) run();};
+  document.getElementById("phi").oninput=e=>{phi=+e.target.value;document.getElementById("phv").textContent=phi.toFixed(2); if(ran) run();};
+  document.getElementById("g").oninput=e=>{g=+e.target.value;document.getElementById("gv").textContent=g.toFixed(2); if(ran){ const out=protocol(g,layers,theta,phi); st=out.st; fid=out.F; update(); }};
+  document.getElementById("layers").oninput=e=>{layers=+e.target.value;document.getElementById("lv").textContent=layers; if(ran) run();};
+  document.getElementById("run").onclick=run;
+  document.getElementById("reset").onclick=()=>{st=null;ran=false;fid=0;curve=[];update();};
+  window.addEventListener("resize",resize);
+  resize(); update();
+  (function loop(ts){draw(ts*0.001);requestAnimationFrame(loop);})(0);
+  window.labRun=run; window.labSetG=v=>{g=v;document.getElementById("g").value=v;document.getElementById("gv").textContent=(+v).toFixed(2); if(ran){const out=protocol(g,layers,theta,phi);st=out.st;fid=out.F;update();}};
+  window.labReady=true;
+})();
+</script>
+</body>
+</html>

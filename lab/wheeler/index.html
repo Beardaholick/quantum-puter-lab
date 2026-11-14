@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Participatory Universe</title>
+<link rel="stylesheet" href="../theme.css">
+
+<meta name="theme-color" content="#07060a">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<link rel="manifest" href="../../manifest.webmanifest">
+<link rel="apple-touch-icon" href="../../icons/apple-touch-icon.png">
+<script src="../../app-pwa.js" defer></script>
+
+<style>
+  .wrap { display: grid; grid-template-columns: 310px 1fr; min-height: calc(100vh - 54px); }
+  aside { padding: 1rem 1.1rem; border-right: 1px solid var(--line); background: #0c0a10; overflow: auto; }
+  #view { display: block; width: 100%; height: calc(100vh - 54px); }
+  @media (max-width: 800px) { .wrap { grid-template-columns: 1fr; } #view { height: 70vh; } }
+</style>
+</head>
+<body>
+<div class="grain" aria-hidden="true"></div>
+<header>
+  <a class="back" href="../../index.html">← Lab</a>
+  <h1>IT FROM BIT</h1>
+  <p class="lede">Wheeler’s delayed choice · a late question settles an earlier path · not consciousness creating the cosmos</p>
+</header>
+<div class="wrap">
+  <aside>
+    <label>The late question</label>
+    <div class="row">
+      <button class="act" id="qOpen">Ask: interfere</button>
+      <button class="act primary" id="qPath">Ask: which path</button>
+    </div>
+    <label>Ask at time τ (after the slits) = <span id="tv">0.80</span></label>
+    <input id="tau" type="range" min="0.05" max="1" step="0.01" value="0.80">
+    <div class="row"><button class="act" id="fire">Send 800 quanta</button></div>
+    <dl class="metrics" id="metrics"></dl>
+    <p class="honest">A quantum is sent through two slits at t=0. Only later, at time τ, do you choose whether to ask “which path?” or “what is the interference?” The screen record that then appears is the one consistent with that late question — even though the slits are already in the past of this spacetime cartoon. That is Wheeler’s delayed-choice experiment. His slogan “it from bit” is an interpretation: information and questions enter the account of what we can say. The mathematics is ordinary quantum mechanics. This page does not claim that human consciousness creates the universe, and it does not send a signal into the past.</p>
+  </aside>
+  <section class="stage"><canvas id="view"></canvas></section>
+</div>
+<script>
+(function(){
+  const canvas=document.getElementById("view");
+  const BINS=120;
+  let question="path", tau=0.80, hist=new Float64Array(BINS), n=0;
+  function reset(){hist=new Float64Array(BINS);n=0;}
+  function amp(x,slit){
+    const env=Math.exp(-(x*x)/(2*0.42*0.42));
+    const phase=14*x*(slit<0?-1:1);
+    return [env*Math.cos(phase), env*Math.sin(phase)];
+  }
+  function fire(k){
+    for(let s=0;s<k;s++){
+      let x=0, tries=0;
+      while(tries++<50){
+        x=Math.random()*2-1;
+        const aL=amp(x,-1), aR=amp(x,1);
+        let p;
+        if(question==="open"){
+          const re=aL[0]+aR[0], im=aL[1]+aR[1]; p=re*re+im*im;
+        } else {
+          p=(aL[0]*aL[0]+aL[1]*aL[1])+(aR[0]*aR[0]+aR[1]*aR[1]);
+        }
+        if(Math.random()<p/4.2) break;
+      }
+      const b=Math.max(0,Math.min(BINS-1,Math.floor((x+1)/2*BINS)));
+      hist[b]++; n++;
+    }
+  }
+  function resize(){const r=canvas.parentElement.getBoundingClientRect();const dpr=Math.min(2,devicePixelRatio||1);canvas.width=Math.floor(r.width*dpr);canvas.height=Math.floor(r.height*dpr);}
+  function draw(t){
+    const ctx=canvas.getContext("2d");
+    const w=canvas.width,h=canvas.height;
+    ctx.clearRect(0,0,w,h);
+    const y0=h*0.16, ySlit=h*(0.16+0.42*Math.min(1,tau+0.15)), yAsk=h*(0.16+0.55), yScr=h*0.82;
+    const xC=w*0.5;
+    // light cone cartoon
+    ctx.strokeStyle="#3a3328"; ctx.lineWidth=1;
+    ctx.beginPath(); ctx.moveTo(w*0.12,y0); ctx.lineTo(w*0.42,yScr-h*0.18); ctx.moveTo(w*0.12,y0); ctx.lineTo(w*0.12,ySlit); ctx.stroke();
+    ctx.fillStyle="#f0d78c"; ctx.beginPath(); ctx.arc(w*0.12,y0,5,0,Math.PI*2); ctx.fill();
+    ctx.fillStyle="#8a7a64"; ctx.font=`${Math.max(11,w*0.013)}px Palatino, serif`;
+    ctx.fillText("emission  t = 0", w*0.12+10, y0+4);
+    // slits (already in the past of the question)
+    ctx.strokeStyle="#d4af37"; ctx.beginPath(); ctx.moveTo(w*0.08,ySlit); ctx.lineTo(w*0.92,ySlit); ctx.stroke();
+    [[-0.18],[0.18]].forEach(([s])=>{
+      const x=xC+s*(w*0.32);
+      ctx.fillStyle="#07060a"; ctx.fillRect(x-8,ySlit-6,16,12);
+      ctx.strokeStyle="#00e5ff"; ctx.strokeRect(x-8,ySlit-6,16,12);
+    });
+    ctx.fillStyle="#8a7a64"; ctx.fillText("slits  (already in the past)", w*0.62, ySlit-12);
+    // late question marker
+    const yQ=y0+(yScr-y0)*tau;
+    ctx.strokeStyle="#ff4fd8"; ctx.setLineDash([5,4]);
+    ctx.beginPath(); ctx.moveTo(w*0.18,yQ); ctx.lineTo(w*0.92,yQ); ctx.stroke(); ctx.setLineDash([]);
+    ctx.fillStyle="#ff4fd8";
+    ctx.fillText("late question  τ  ·  "+(question==="open"?"interfere":"which path"), w*0.55, yQ-8);
+    // screen
+    const x0=w*0.18, sw=w*0.70, sh=h*0.14;
+    const mx=Math.max(1,...hist);
+    ctx.strokeStyle="#3a3328"; ctx.strokeRect(x0,yScr-sh,sw,sh);
+    ctx.fillStyle=question==="open"?"#f0d78c":"#00e5ff";
+    for(let i=0;i<BINS;i++){
+      const bh=(hist[i]/mx)*sh;
+      ctx.fillRect(x0+(i/BINS)*sw, yScr-bh, sw/BINS+0.4, bh);
+    }
+    ctx.fillStyle="#8a7a64";
+    ctx.fillText("record at the screen  (only now is a history chosen)", x0, yScr+16);
+    ctx.fillStyle="#f0d78c";
+    ctx.font=`${Math.max(16,w*0.018)}px Palatino, serif`;
+    ctx.textAlign="center";
+    ctx.fillText(question==="open"?"A late ask for interference — fringes appear":"A late ask for which-path — fringes stay gone", w/2, h*0.48);
+    ctx.textAlign="left";
+    document.getElementById("metrics").innerHTML=`
+      <div><dt>question</dt><dd>${question==="open"?"interference":"which-path"}</dd></div>
+      <div><dt>τ</dt><dd>${tau.toFixed(2)}  (after the slits)</dd></div>
+      <div><dt>quanta</dt><dd>${n}</dd></div>`;
+    document.getElementById("qOpen").classList.toggle("on", question==="open");
+    document.getElementById("qPath").classList.toggle("on", question==="path");
+  }
+  function ask(q){question=q;reset();fire(800);draw(0);}
+  document.getElementById("qOpen").onclick=()=>ask("open");
+  document.getElementById("qPath").onclick=()=>ask("path");
+  document.getElementById("tau").oninput=e=>{tau=+e.target.value;document.getElementById("tv").textContent=tau.toFixed(2);draw(0);};
+  document.getElementById("fire").onclick=()=>{fire(800);draw(0);};
+  window.addEventListener("resize",()=>{resize();draw(0);});
+  resize(); fire(800); draw(0);
+  window.labReady=true;
+})();
+</script>
+</body>
+</html>

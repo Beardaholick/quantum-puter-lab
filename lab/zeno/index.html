@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Zeno Binding</title>
+<link rel="stylesheet" href="../theme.css">
+
+<meta name="theme-color" content="#07060a">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<link rel="manifest" href="../../manifest.webmanifest">
+<link rel="apple-touch-icon" href="../../icons/apple-touch-icon.png">
+<script src="../../app-pwa.js" defer></script>
+
+<style>
+  .wrap { display: grid; grid-template-columns: 300px 1fr; min-height: calc(100vh - 54px); }
+  aside { padding: 1rem 1.1rem; border-right: 1px solid var(--line); background: #0c0a10; }
+  .panes { display: grid; grid-template-rows: 1fr 200px; height: calc(100vh - 54px); }
+  canvas { display: block; width: 100%; height: 100%; }
+  @media (max-width: 800px) { .wrap { grid-template-columns: 1fr; } .panes { height: 80vh; } }
+</style>
+</head>
+<body>
+<div class="grain" aria-hidden="true"></div>
+<header>
+  <a class="back" href="../../index.html">← Lab</a>
+  <h1>ZENO BINDING</h1>
+  <p class="lede">Frequent observation freezes a precessing qubit · a real quantum effect</p>
+</header>
+<div class="wrap">
+  <aside>
+    <label>Observation interval τ = <span id="tauv">0.08</span> (2π/Ω = 1)</label>
+    <input id="tau" type="range" min="0.01" max="0.50" step="0.01" value="0.08">
+    <div class="row">
+      <button class="act primary" id="bind">Bind (watch)</button>
+      <button class="act" id="free">Let precess</button>
+      <button class="act" id="reset">Reset |0⟩</button>
+    </div>
+    <dl class="metrics" id="metrics"></dl>
+    <p class="honest">A qubit starts in |0⟩ and would rotate toward |1⟩ under H = (Ω/2)σ<sub>x</sub> (Rabi period 1 in these units). If we projectively measure “still in |0⟩?” every τ, the escape probability per look is sin²(Ωτ/2) ≈ (Ωτ/2)². n = t/τ looks give survival ≈ [cos²(Ωτ/2)]ⁿ, which → 1 as τ→0. That is the quantum Zeno effect — sometimes nicknamed a watched pot. It is not a curse; it is measurement back-action.</p>
+  </aside>
+  <div class="panes">
+    <section class="stage"><canvas id="bloch"></canvas></section>
+    <section class="stage" style="min-height:200px"><canvas id="plot"></canvas></section>
+  </div>
+</div>
+<script>
+(function(){
+  const bloch=document.getElementById("bloch"), plot=document.getElementById("plot");
+  const OMEGA=2*Math.PI; // period 1
+  let tau=0.08, watching=true, t=0;
+  // state as [re0,im0,re1,im1]; start |0>
+  let psi=[1,0,0,0];
+  const hist={t:[0],free:[1],zeno:[1],surv:1};
+  let lastLook=0, escapes=0, looks=0;
+  function applyU(dt){
+    // U = exp(-i (Ω/2) σx dt) = cos(φ) I - i sin(φ) σx, φ=Ω dt/2
+    const ph=OMEGA*dt/2, c=Math.cos(ph), s=Math.sin(ph);
+    const a=psi[0],b=psi[1],c1=psi[2],d=psi[3];
+    // (c I - i s σx)|ψ>; σx swaps; -i(x+iy)= y - i x
+    const n0r=c*a + s*d;
+    const n0i=c*b - s*c1;
+    const n1r=c*c1 + s*b;
+    const n1i=c*d - s*a;
+    psi=[n0r,n0i,n1r,n1i];
+  }
+  function p0(){return psi[0]*psi[0]+psi[1]*psi[1];}
+  function measure(){
+    looks++;
+    const p=p0();
+    if(Math.random()<p){ psi=[1,0,0,0]; return true; }
+    psi=[0,0,1,0]; escapes++; return false;
+  }
+  function reset(){
+    psi=[1,0,0,0]; t=0; lastLook=0; escapes=0; looks=0;
+    hist.t=[0]; hist.free=[1]; hist.zeno=[1]; hist.surv=1;
+  }
+  function step(dt){
+    const T=1.0; // one Rabi period window, then wrap display but keep going to 4 periods
+    applyU(dt); t+=dt;
+    if(watching && t-lastLook>=tau){
+      lastLook=t;
+      const ok=measure();
+      hist.surv = looks? (looks-escapes)/looks : 1;
+      if(!ok){ /* escaped: stay in |1> until reset? keep evolving from |1> but that's not the binding demo.
+          For the binding spell we restart a fresh trajectory when it escapes, tallying survival of the original.
+          Better: we record this trajectory as escaped and start a new ensemble member. */ 
+        // ensemble average via formula + one live trajectory that gets reset
+        psi=[1,0,0,0];
+      }
+    }
+    const n=Math.floor(t/tau);
+    const zenoTheory=Math.pow(Math.cos(OMEGA*tau/2),2)**Math.max(0,Math.floor(t/tau));
+    const free=Math.cos(OMEGA*t/2)**2;
+    if(hist.t.length===0 || t-hist.t[hist.t.length-1]>0.01){
+      hist.t.push(t); hist.free.push(free); hist.zeno.push(zenoTheory);
+      if(hist.t.length>400){ hist.t.shift(); hist.free.shift(); hist.zeno.shift(); }
+    }
+  }
+  function blochVec(){
+    // r = <σ>
+    const a=psi[0],b=psi[1],c=psi[2],d=psi[3];
+    // <X>=2 Re(α* β), <Y>=2 Im(α* β), <Z>=|α|^2-|β|^2
+    const x=2*(a*c+b*d), y=2*(a*d-b*c), z=(a*a+b*b)-(c*c+d*d);
+    return [x,y,z];
+  }
+  function resize(){
+    [bloch,plot].forEach(c=>{
+      const r=c.parentElement.getBoundingClientRect();
+      const dpr=Math.min(2,devicePixelRatio||1);
+      c.width=Math.floor(r.width*dpr); c.height=Math.floor(r.height*dpr);
+    });
+  }
+  function drawBloch(){
+    const ctx=bloch.getContext("2d");
+    const w=bloch.width,h=bloch.height;
+    ctx.clearRect(0,0,w,h);
+    const cx=w*0.5, cy=h*0.52, R=Math.min(w,h)*0.32;
+    ctx.strokeStyle="#3a3328"; ctx.lineWidth=1; ctx.globalAlpha=1;
+    ctx.beginPath(); ctx.arc(cx,cy,R,0,Math.PI*2); ctx.stroke();
+    ctx.beginPath(); ctx.ellipse(cx,cy,R,R*0.35,0,0,Math.PI*2); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(cx,cy-R); ctx.lineTo(cx,cy+R); ctx.stroke();
+    ctx.fillStyle="#8a7a64"; ctx.font=`${Math.max(11,R*0.08)}px Palatino, serif`;
+    ctx.textAlign="center";
+    ctx.fillText("|0⟩", cx, cy-R-8);
+    ctx.fillText("|1⟩", cx, cy+R+18);
+    const v=blochVec();
+    // project: x right, z up, y into page (scale ellipse)
+    const px=cx+v[0]*R, py=cy-v[2]*R - v[1]*R*0.35;
+    ctx.strokeStyle="#00e5ff"; ctx.lineWidth=2;
+    ctx.beginPath(); ctx.moveTo(cx,cy); ctx.lineTo(px,py); ctx.stroke();
+    ctx.fillStyle="#f0d78c"; ctx.beginPath(); ctx.arc(px,py,6,0,Math.PI*2); ctx.fill();
+    ctx.fillStyle="#f3e6c4"; ctx.font=`${Math.max(14,R*0.1)}px Palatino, serif`;
+    ctx.fillText(watching?"bound / watched":"free precession", cx, 28);
+  }
+  function drawPlot(){
+    const ctx=plot.getContext("2d");
+    const w=plot.width,h=plot.height;
+    ctx.clearRect(0,0,w,h);
+    const L=40,B=28,T=16,R=16;
+    const W=w-L-R,Hgt=h-T-B;
+    ctx.strokeStyle="#3a3328"; ctx.strokeRect(L,T,W,Hgt);
+    const tmax=Math.max(4, hist.t[hist.t.length-1]||4);
+    function X(tt){return L+W*(tt/tmax);}
+    function Y(p){return T+Hgt*(1-p);}
+    ctx.globalAlpha=0.5;
+    for(let i=0;i<=4;i++){ctx.beginPath();ctx.moveTo(X(i*tmax/4),T);ctx.lineTo(X(i*tmax/4),T+Hgt);ctx.stroke();}
+    ctx.globalAlpha=1;
+    function line(arr,col,dash){
+      ctx.strokeStyle=col; ctx.lineWidth=2; ctx.setLineDash(dash||[]);
+      ctx.beginPath();
+      hist.t.forEach((tt,i)=>{const yy=Y(arr[i]); if(i===0)ctx.moveTo(X(tt),yy); else ctx.lineTo(X(tt),yy);});
+      ctx.stroke(); ctx.setLineDash([]);
+    }
+    line(hist.free,"#ff4fd8",[6,4]);
+    line(hist.zeno,"#d4af37");
+    ctx.fillStyle="#8a7a64"; ctx.font="11px ui-monospace, Menlo, monospace";
+    ctx.fillText("P(|0⟩)", 8, 14);
+    ctx.fillText("t / Rabi periods", w/2-40, h-8);
+    ctx.fillStyle="#ff4fd8"; ctx.fillText("free  cos²(Ωt/2)", L+8, T+14);
+    ctx.fillStyle="#d4af37"; ctx.fillText("Zeno  [cos²(Ωτ/2)]ⁿ", L+8, T+28);
+  }
+  function metrics(){
+    const n=Math.floor(t/Math.max(tau,1e-6));
+    const th=Math.pow(Math.cos(OMEGA*tau/2),2)**n;
+    document.getElementById("metrics").innerHTML=`
+      <div><dt>t</dt><dd>${t.toFixed(2)} periods</dd></div>
+      <div><dt>looks</dt><dd>${looks}</dd></div>
+      <div><dt>P₀ now</dt><dd>${p0().toFixed(3)}</dd></div>
+      <div><dt>theory P_surv</dt><dd>${th.toFixed(3)}</dd></div>
+      <div><dt>mode</dt><dd>${watching?"Zeno / bound":"free"}</dd></div>`;
+  }
+  document.getElementById("tau").oninput=e=>{tau=+e.target.value;document.getElementById("tauv").textContent=tau.toFixed(2);};
+  document.getElementById("bind").onclick=()=>{watching=true;};
+  document.getElementById("free").onclick=()=>{watching=false;};
+  document.getElementById("reset").onclick=reset;
+  window.addEventListener("resize",resize);
+  resize();
+  let lastTs=0;
+  function loop(ts){
+    const dt=Math.min(0.05,(ts-lastTs)/1000||0.016); lastTs=ts;
+    // speed: 0.25 periods / wall-second so the freeze is visible
+    step(dt*0.35);
+    if(t>6){ /* keep window moving but don't reset state theory — trim is enough */ }
+    drawBloch(); drawPlot(); metrics();
+    requestAnimationFrame(loop);
+  }
+  requestAnimationFrame(loop);
+  window.labReady=true;
+})();
+</script>
+</body>
+</html>
