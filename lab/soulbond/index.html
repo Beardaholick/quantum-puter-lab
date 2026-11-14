@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Soul Bond · Entanglement Swapping</title>
+<link rel="stylesheet" href="../theme.css">
+
+<meta name="theme-color" content="#07060a">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<link rel="manifest" href="../../manifest.webmanifest">
+<link rel="apple-touch-icon" href="../../icons/apple-touch-icon.png">
+<script src="../../app-pwa.js" defer></script>
+
+<style>
+  .wrap { display: grid; grid-template-columns: 310px 1fr; min-height: calc(100vh - 54px); }
+  aside { padding: 1rem 1.1rem; border-right: 1px solid var(--line); background: #0c0a10; overflow: auto; }
+  #scene { display: block; width: 100%; height: calc(100vh - 54px); }
+  .S { font-family: ui-monospace, Menlo, monospace; font-size: 1.5rem; margin-top: 0.6rem; }
+  @media (max-width: 800px) { .wrap { grid-template-columns: 1fr; } #scene { height: 70vh; } }
+</style>
+</head>
+<body>
+<div class="grain" aria-hidden="true"></div>
+<header>
+  <a class="back" href="../../index.html">← Lab</a>
+  <h1>SOUL BOND</h1>
+  <p class="lede">Entanglement swapping · two sigils that never met become a Bell pair</p>
+</header>
+<div class="wrap">
+  <aside>
+    <div class="row">
+      <button class="act primary" id="prep">Prepare two pairs</button>
+      <button class="act" id="swap">Bell-swap / Bond</button>
+      <button class="act" id="reset">Reset</button>
+    </div>
+    <dl class="metrics" id="metrics"></dl>
+    <div id="chsh"></div>
+    <p class="honest">Four qubits. A and A′ share Φ⁺; B and B′ share Φ⁺. A Bell measurement on A′ and B′ (the “officiant”) projects A and B into a Bell pair even though they never interacted. That is entanglement swapping (Żukowski, Zeilinger, Horne, Ekert, 1993). It still needs a classical announcement of the Bell outcome so A and B can apply corrections and confirm the bond. CHSH on A⊗B is computed exactly on the simulated state. This is not a metaphysical soul-tie.</p>
+  </aside>
+  <section class="stage"><canvas id="scene"></canvas></section>
+</div>
+<script>
+(function(){
+  const canvas=document.getElementById("scene");
+  const D=16; // 4 qubits: 0=A, 1=A', 2=B', 3=B
+  let st=null, stage=0, bits=[0,0], S=0, anim=0;
+  function fresh(){const re=new Float64Array(D),im=new Float64Array(D);re[0]=1;return {re,im};}
+  function H(st,q){const c=Math.SQRT1_2,bit=1<<q,{re,im}=st;for(let i=0;i<D;i++){if(i&bit)continue;const j=i|bit,ar=re[i],ai=im[i],br=re[j],bi=im[j];re[i]=c*(ar+br);im[i]=c*(ai+bi);re[j]=c*(ar-br);im[j]=c*(ai-bi);}}
+  function CX(st,c,t){const cb=1<<c,tb=1<<t,{re,im}=st;for(let i=0;i<D;i++){if((i&cb)&&!(i&tb)){const j=i|tb,tr=re[i],ti=im[i];re[i]=re[j];im[i]=im[j];re[j]=tr;im[j]=ti;}}}
+  function X(st,q){const bit=1<<q,{re,im}=st;for(let i=0;i<D;i++){if(i&bit)continue;const j=i|bit;const tr=re[i],ti=im[i];re[i]=re[j];im[i]=im[j];re[j]=tr;im[j]=ti;}}
+  function Z(st,q){const bit=1<<q,{re,im}=st;for(let i=0;i<D;i++){if(i&bit){re[i]*=-1;im[i]*=-1;}}}
+  function correlator(st,qA,qB,thA,thB){
+    const ca=Math.cos(thA),sa=Math.sin(thA),cb=Math.cos(thB),sb=Math.sin(thB);
+    const bA=1<<qA,bB=1<<qB,{re,im}=st;
+    let ZZ=0,XX=0,ZX=0,XZ=0;
+    for(let i=0;i<D;i++){
+      const p=re[i]*re[i]+im[i]*im[i];
+      const za=(i&bA)?-1:1,zb=(i&bB)?-1:1;
+      ZZ+=p*za*zb;
+      const j=i^bA^bB; XX+=re[i]*re[j]+im[i]*im[j];
+      const k=i^bB; ZX+=(re[i]*re[k]+im[i]*im[k])*za;
+      const l=i^bA; XZ+=(re[i]*re[l]+im[i]*im[l])*zb;
+    }
+    return ca*cb*ZZ+ca*sb*ZX+sa*cb*XZ+sa*sb*XX;
+  }
+  function chsh(st,a,b){
+    return correlator(st,a,b,0,Math.PI/4)+correlator(st,a,b,0,-Math.PI/4)+correlator(st,a,b,Math.PI/2,Math.PI/4)-correlator(st,a,b,Math.PI/2,-Math.PI/4);
+  }
+  function prepare(){
+    st=fresh();
+    H(st,0); CX(st,0,1); // A–A'
+    H(st,3); CX(st,3,2); // B–B'
+    stage=1; bits=[0,0]; S=chsh(st,0,3); anim=1; update();
+  }
+  function swap(){
+    if(stage<1) prepare();
+    // Bell measure A'(1) and B'(2): CX(1,2), H(1), measure
+    CX(st,1,2); H(st,1);
+    const p=new Float64Array(D);
+    for(let i=0;i<D;i++) p[i]=st.re[i]*st.re[i]+st.im[i]*st.im[i];
+    const po=[0,0,0,0];
+    for(let i=0;i<D;i++){
+      const m=((i>>1)&1) | (((i>>2)&1)<<1); // bits of q1 and q2
+      po[m]+=p[i];
+    }
+    let r=Math.random(),acc=0,m=0;
+    for(let k=0;k<4;k++){acc+=po[k];if(r<=acc){m=k;break;}}
+    bits=[m&1,(m>>1)&1];
+    let nrm=0;
+    for(let i=0;i<D;i++){
+      const mm=((i>>1)&1)|(((i>>2)&1)<<1);
+      if(mm!==m){st.re[i]=0;st.im[i]=0;} else nrm+=st.re[i]*st.re[i]+st.im[i]*st.im[i];
+    }
+    nrm=Math.sqrt(nrm)||1;
+    for(let i=0;i<D;i++){st.re[i]/=nrm;st.im[i]/=nrm;}
+    // corrections on B (q3) so the swapped pair is Φ+
+    if(bits[1]) X(st,3);
+    if(bits[0]) Z(st,3);
+    S=chsh(st,0,3);
+    stage=2; anim=1; update();
+  }
+  function reset(){st=null;stage=0;bits=[0,0];S=0;update();}
+  function update(){
+    const viol=Math.abs(S)>2;
+    document.getElementById("metrics").innerHTML=`
+      <div><dt>stage</dt><dd>${stage===0?"idle":stage===1?"two Bell pairs":"swapped"}</dd></div>
+      <div><dt>Bell bits</dt><dd>${stage>=2?bits[0]+""+bits[1]:"—"}</dd></div>`;
+    document.getElementById("chsh").innerHTML=st?`<div class="S ${viol?"violate":"classical"}" style="color:${viol?"var(--cyan)":"var(--gold-soft)"}">S(A,B) = ${S.toFixed(3)}</div>
+      <p class="honest" style="margin-top:0.3rem">${stage<2?"Before the swap, A and B are uncorrelated (S should sit at 0).":"After the swap and corrections, A and B form Φ⁺: S → 2√2 ≈ 2.828. They never interacted."}</p>`:"";
+  }
+  function resize(){const r=canvas.parentElement.getBoundingClientRect();const dpr=Math.min(2,devicePixelRatio||1);canvas.width=Math.floor(r.width*dpr);canvas.height=Math.floor(r.height*dpr);}
+  function node(ctx,x,y,label,col,lit){
+    ctx.fillStyle=col; ctx.shadowColor=col; ctx.shadowBlur=lit?22:8;
+    ctx.beginPath(); ctx.arc(x,y,14,0,Math.PI*2); ctx.fill(); ctx.shadowBlur=0;
+    ctx.fillStyle="#f3e6c4"; ctx.font=`${Math.max(13,canvas.width*0.014)}px Palatino, serif`;
+    ctx.textAlign="center"; ctx.fillText(label,x,y+32);
+  }
+  function bond(ctx,x1,y1,x2,y2,col,w,dash){
+    ctx.strokeStyle=col; ctx.lineWidth=w; ctx.setLineDash(dash||[]);
+    ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(x2,y2); ctx.stroke(); ctx.setLineDash([]);
+  }
+  function draw(t){
+    const ctx=canvas.getContext("2d");
+    const w=canvas.width,h=canvas.height;
+    ctx.clearRect(0,0,w,h);
+    const yA=h*0.38, yB=h*0.38, yM=h*0.72;
+    const A=w*0.18, Ap=w*0.38, Bp=w*0.62, B=w*0.82;
+    ctx.fillStyle="#f0d78c"; ctx.font=`${Math.max(16,w*0.018)}px Palatino, serif`;
+    ctx.textAlign="center";
+    ctx.fillText(stage===0?"Two sigils, no bond yet":stage===1?"Two separate Bell pairs":"Bond complete · A and B now share Φ⁺", w/2, h*0.12);
+    if(stage>=1){
+      bond(ctx,A,yA,Ap,yM, "#00e5ff", 2);
+      bond(ctx,B,yB,Bp,yM, "#00e5ff", 2);
+    }
+    if(stage>=2){
+      const pulse=0.6+0.4*Math.sin(t*4);
+      bond(ctx,A,yA,B,yB, "#f0d78c", 3.5*pulse, []);
+      bond(ctx,Ap,yM,Bp,yM, "#ff4fd8", 2, [6,4]);
+      ctx.fillStyle="#f0d78c"; ctx.font=`${Math.max(14,w*0.016)}px ui-monospace, Menlo, monospace`;
+      ctx.fillText("classical bits "+bits[0]+bits[1], w/2, yM-24);
+    }
+    node(ctx,A,yA,"A · sigil I","#f0d78c",stage>=2);
+    node(ctx,B,yB,"B · sigil II","#f0d78c",stage>=2);
+    node(ctx,Ap,yM,"A′","#00e5ff",stage>=1);
+    node(ctx,Bp,yM,"B′","#00e5ff",stage>=1);
+    ctx.fillStyle="#8a7a64"; ctx.font=`${Math.max(12,w*0.013)}px Palatino, serif`;
+    ctx.fillText("officiant  (Bell measurement)", w/2, yM+52);
+  }
+  document.getElementById("prep").onclick=prepare;
+  document.getElementById("swap").onclick=swap;
+  document.getElementById("reset").onclick=reset;
+  window.addEventListener("resize",resize);
+  resize(); update();
+  (function loop(ts){draw(ts*0.001);requestAnimationFrame(loop);})(0);
+  window.labReady=true;
+})();
+</script>
+</body>
+</html>

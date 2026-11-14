@@ -1,0 +1,377 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Astral Teleport</title>
+<link rel="stylesheet" href="../theme.css">
+
+<meta name="theme-color" content="#07060a">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<link rel="manifest" href="../../manifest.webmanifest">
+<link rel="apple-touch-icon" href="../../icons/apple-touch-icon.png">
+<script src="../../app-pwa.js" defer></script>
+
+<style>
+  .wrap { display: grid; grid-template-columns: 300px 1fr; min-height: calc(100vh - 54px); }
+  aside { padding: 1rem 1.1rem; border-right: 1px solid var(--line); background: #0c0a10; overflow: auto; }
+  #scene { display: block; width: 100%; height: calc(100vh - 54px); }
+  .step { font-family: ui-monospace, Menlo, monospace; font-size: 0.78rem; color: var(--gold-soft); min-height: 3.2em; }
+  @media (max-width: 800px) { .wrap { grid-template-columns: 1fr; } #scene { height: 70vh; } }
+</style>
+</head>
+<body>
+<div class="grain" aria-hidden="true"></div>
+<header>
+  <a class="back" href="../../index.html">← Lab</a>
+  <h1>ASTRAL TELEPORT</h1>
+  <p class="lede">Bennett et al. teleportation · mid-protocol Kraus noise on the Bell pair</p>
+</header>
+<div class="wrap">
+  <aside>
+    <label>Alice's unknown state · Bloch θ = <span id="thv">1.05</span></label>
+    <input id="theta" type="range" min="0" max="3.1416" step="0.01" value="1.05">
+    <label>φ = <span id="phv">0.70</span></label>
+    <input id="phi" type="range" min="0" max="6.2832" step="0.01" value="0.70">
+    <label>Decoherence p = <span id="pv">0.00</span></label>
+    <input id="noise" type="range" min="0" max="1" step="0.01" value="0">
+    <div class="row">
+      <button class="act primary" id="run">Project / Run protocol</button>
+      <button class="act" id="step">Step once</button>
+      <button class="act" id="reset">Reset</button>
+    </div>
+    <p class="step" id="stepTxt">Idle. Set a state, then run.</p>
+    <dl class="metrics" id="metrics"></dl>
+    <p class="honest">Bennett, Brassard, Crépeau, Jozsa, Peres, Wootters (1993). Alice and Bob share a Bell pair. Alice jointly measures her unknown qubit ψ with her half of the pair, and phones Bob two classical bits. Bob applies X and/or Z and holds ψ. Nothing material moves; the original ψ is destroyed by Alice's measurement (no-cloning). After the Bell pair is shared — and before Alice’s Bell measurement — a depolarizing Kraus channel acts on Bob’s qubit: K₀=√(1−3p/4) I, K₁,₂,₃=√(p/4) {X,Y,Z}. That is mid-protocol noise on the entangled resource, not a fog painted on at the end. It is equivalent to Λ(ρ)=(1−p)ρ + p I/2 on the teleported state, so the average fidelity is 1 − p/2. At p=0 the four Kraus collapse to I and F=1 exactly. Decoherence is a real noise model, not a mystical veil.</p>
+  </aside>
+  <section class="stage"><canvas id="scene"></canvas></section>
+</div>
+<script>
+(function(){
+  const canvas=document.getElementById("scene");
+  // 3 qubits: 0 = message, 1 = Alice Bell, 2 = Bob Bell. DIM=8
+  const D=8;
+  let theta=1.05, phi=0.70, noise=0, stage=0, bits=[0,0], fid=1, anim=0;
+  let st=null, rho=null;
+  const STEPS=[
+    "Prepare |ψ⟩ on Alice's message qubit; Bob holds nothing of it yet.",
+    "Share a Bell pair Φ+ = (|00⟩+|11⟩)/√2 between Alice (q1) and Bob (q2).",
+    "Alice applies CNOT(message → her half) then H on the message.",
+    "Alice measures both of her qubits. Two classical bits fly to Bob.",
+    "Bob applies X^{bit1} Z^{bit0}. His qubit is now |ψ⟩. Fidelity 1."
+  ];
+  function fresh(){const re=new Float64Array(D),im=new Float64Array(D);re[0]=1;return {re,im};}
+  function RY(st,q,th){const c=Math.cos(th/2),s=Math.sin(th/2),bit=1<<q,{re,im}=st;for(let i=0;i<D;i++){if(i&bit)continue;const j=i|bit,ar=re[i],ai=im[i],br=re[j],bi=im[j];re[i]=c*ar+s*br;im[i]=c*ai+s*bi;re[j]=-s*ar+c*br;im[j]=-s*ai+c*bi;}}
+  function RZ(st,q,ph){const h=ph/2,c0=Math.cos(-h),s0=Math.sin(-h),c1=Math.cos(h),s1=Math.sin(h),bit=1<<q,{re,im}=st;for(let i=0;i<D;i++){const cr=(i&bit)?c1:c0,ci=(i&bit)?s1:s0,ar=re[i],ai=im[i];re[i]=ar*cr-ai*ci;im[i]=ar*ci+ai*cr;}}
+  function H(st,q){const c=Math.SQRT1_2,bit=1<<q,{re,im}=st;for(let i=0;i<D;i++){if(i&bit)continue;const j=i|bit,ar=re[i],ai=im[i],br=re[j],bi=im[j];re[i]=c*(ar+br);im[i]=c*(ai+bi);re[j]=c*(ar-br);im[j]=c*(ai-bi);}}
+  function CX(st,c,t){const cb=1<<c,tb=1<<t,{re,im}=st;for(let i=0;i<D;i++){if((i&cb)&&!(i&tb)){const j=i|tb,tr=re[i],ti=im[i];re[i]=re[j];im[i]=im[j];re[j]=tr;im[j]=ti;}}}
+  function X(st,q){const bit=1<<q,{re,im}=st;for(let i=0;i<D;i++){if(i&bit)continue;const j=i|bit;const tr=re[i],ti=im[i];re[i]=re[j];im[i]=im[j];re[j]=tr;im[j]=ti;}}
+  function Z(st,q){const bit=1<<q,{re,im}=st;for(let i=0;i<D;i++){if(i&bit){re[i]*=-1;im[i]*=-1;}}}
+  function blochOf(st,q){
+    // reduced Bloch of one qubit
+    let x=0,y=0,z=0;
+    const bit=1<<q,{re,im}=st;
+    for(let i=0;i<D;i++){
+      const p=re[i]*re[i]+im[i]*im[i];
+      z+= (i&bit)?-p:p;
+      const j=i^bit;
+      if((i&bit)===0){
+        x+=2*(re[i]*re[j]+im[i]*im[j]);
+        y+=2*(re[i]*im[j]-im[i]*re[j]);
+      }
+    }
+    return [x,y,z];
+  }
+  function targetAmps(th,ph){
+    // Must match this page's RY then RZ applied to |0⟩.
+    const c=Math.cos(th/2), s=Math.sin(th/2);
+    let a0r=c, a0i=0, a1r=-s, a1i=0; // RY as implemented: |0⟩ → c|0⟩ − s|1⟩
+    const h=ph/2;
+    const c0=Math.cos(-h), s0=Math.sin(-h), c1=Math.cos(h), s1=Math.sin(h);
+    return [
+      a0r*c0 - a0i*s0, a0r*s0 + a0i*c0,
+      a1r*c1 - a1i*s1, a1r*s1 + a1i*c1
+    ];
+  }
+  function targetBloch(th,ph){
+    const t=targetAmps(th,ph);
+    const a0r=t[0],a0i=t[1],a1r=t[2],a1i=t[3];
+    return [2*(a0r*a1r+a0i*a1i), 2*(a0r*a1i-a0i*a1r), (a0r*a0r+a0i*a0i)-(a1r*a1r+a1i*a1i)];
+  }
+  function fidelityBobToPsi(st,th,ph){
+    const t=targetAmps(th,ph);
+    // reduced ρ of q2, then ⟨ψ|ρ|ψ⟩ — works before and after collapse
+    const r=[[0,0],[0,0]], im=[[0,0],[0,0]];
+    for(let a=0;a<2;a++) for(let b=0;b<2;b++){
+      let sr=0,si=0;
+      for(let k=0;k<4;k++){
+        const i=k | (a<<2);
+        const j=k | (b<<2);
+        sr+=st.re[i]*st.re[j]+st.im[i]*st.im[j];
+        si+=st.im[i]*st.re[j]-st.re[i]*st.im[j];
+      }
+      r[a][b]=sr; im[a][b]=si;
+    }
+    const b0r=t[0],b0i=t[1],b1r=t[2],b1i=t[3];
+    const v0r=r[0][0]*b0r-im[0][0]*b0i + r[0][1]*b1r-im[0][1]*b1i;
+    const v0i=r[0][0]*b0i+im[0][0]*b0r + r[0][1]*b1i+im[0][1]*b1r;
+    const v1r=r[1][0]*b0r-im[1][0]*b0i + r[1][1]*b1r-im[1][1]*b1i;
+    const v1i=r[1][0]*b0i+im[1][0]*b0r + r[1][1]*b1i+im[1][1]*b1r;
+    return b0r*v0r + b0i*v0i + b1r*v1r + b1i*v1i;
+  }
+
+  function Y(st,q){
+    const bit=1<<q, {re,im}=st, nr=new Float64Array(D), ni=new Float64Array(D);
+    for(let i=0;i<D;i++){
+      if(i&bit) continue;
+      const j=i|bit;
+      // Y|0⟩=i|1⟩, Y|1⟩=−i|0⟩
+      nr[j]=-im[i]; ni[j]=re[i];
+      nr[i]=im[j]; ni[i]=-re[j];
+    }
+    st.re.set(nr); st.im.set(ni);
+  }
+  function stToRho(st){
+    const re=new Float64Array(64), im=new Float64Array(64);
+    for(let i=0;i<D;i++) for(let j=0;j<D;j++){
+      re[i*D+j]=st.re[i]*st.re[j]+st.im[i]*st.im[j];
+      im[i*D+j]=st.im[i]*st.re[j]-st.re[i]*st.im[j];
+    }
+    return {re,im};
+  }
+  function applyUnitaryRho(rho, gateFn){
+    const d=D, Ure=[], Uim=[];
+    for(let j=0;j<d;j++){
+      const s={re:new Float64Array(d),im:new Float64Array(d)};
+      s.re[j]=1; gateFn(s);
+      Ure[j]=Float64Array.from(s.re); Uim[j]=Float64Array.from(s.im);
+    }
+    const Tre=new Float64Array(64), Tim=new Float64Array(64);
+    for(let i=0;i<d;i++) for(let j=0;j<d;j++){
+      let sr=0,si=0;
+      for(let k=0;k<d;k++){
+        const rr=rho.re[i*d+k], ri=rho.im[i*d+k];
+        const ur=Ure[k][j], ui=-Uim[k][j]; // (U†)_kj = conj(U_jk)=conj(col k, row j)
+        sr+=rr*ur-ri*ui; si+=rr*ui+ri*ur;
+      }
+      Tre[i*d+j]=sr; Tim[i*d+j]=si;
+    }
+    const nre=new Float64Array(64), nim=new Float64Array(64);
+    for(let i=0;i<d;i++) for(let j=0;j<d;j++){
+      let sr=0,si=0;
+      for(let k=0;k<d;k++){
+        const ur=Ure[k][i], ui=Uim[k][i];
+        const tr=Tre[k*d+j], ti=Tim[k*d+j];
+        sr+=ur*tr-ui*ti; si+=ur*ti+ui*tr;
+      }
+      nre[i*d+j]=sr; nim[i*d+j]=si;
+    }
+    rho.re=nre; rho.im=nim;
+  }
+  function krausDepolarize(rho,q,p){
+    // Λ(ρ)=(1−3p/4)ρ + (p/4)(XρX+YρY+ZρZ)  =  (1−p)ρ + p I/2
+    if(p<=1e-12) return;
+    function clone(r){return {re:Float64Array.from(r.re),im:Float64Array.from(r.im)};}
+    const rI=clone(rho), rX=clone(rho), rY=clone(rho), rZ=clone(rho);
+    applyUnitaryRho(rX,s=>X(s,q));
+    applyUnitaryRho(rY,s=>Y(s,q));
+    applyUnitaryRho(rZ,s=>Z(s,q));
+    const a=1-0.75*p, b=0.25*p;
+    for(let i=0;i<64;i++){
+      rho.re[i]=a*rI.re[i]+b*(rX.re[i]+rY.re[i]+rZ.re[i]);
+      rho.im[i]=a*rI.im[i]+b*(rX.im[i]+rY.im[i]+rZ.im[i]);
+    }
+  }
+  function blochOfRho(rho,q){
+    const bit=1<<q; let x=0,y=0,z=0;
+    for(let i=0;i<D;i++){
+      const p=rho.re[i*D+i];
+      z += (i&bit)?-p:p;
+      if((i&bit)===0){
+        const j=i^bit;
+        x += 2*rho.re[i*D+j];
+        // <Y>=2 Im ρ_{j,i} ? Tr(ρ Y): ⟨i|Y|j⟩ for i=q0,j=q1 is i, so contrib ρ_ij * i...
+        // Y|j (q=1)⟩= −i |i⟩, Y|i (q=0)⟩= i |j⟩
+        // Tr(ρ Y)= sum_{ab} ρ_ba ⟨a|Y|b⟩
+        y += 2*rho.im[i*D+j];
+      }
+    }
+    return [x,y,z];
+  }
+  function fidFromRho(rho,th,ph){
+    const t=targetAmps(th,ph);
+    const r=[[0,0],[0,0]], im=[[0,0],[0,0]];
+    for(let a=0;a<2;a++) for(let b=0;b<2;b++){
+      let sr=0,si=0;
+      for(let k=0;k<4;k++){
+        const i=k | (a<<2), j=k | (b<<2);
+        sr+=rho.re[i*D+j]; si+=rho.im[i*D+j];
+      }
+      r[a][b]=sr; im[a][b]=si;
+    }
+    const b0r=t[0],b0i=t[1],b1r=t[2],b1i=t[3];
+    const v0r=r[0][0]*b0r-im[0][0]*b0i + r[0][1]*b1r-im[0][1]*b1i;
+    const v0i=r[0][0]*b0i+im[0][0]*b0r + r[0][1]*b1i+im[0][1]*b1r;
+    const v1r=r[1][0]*b0r-im[1][0]*b0i + r[1][1]*b1r-im[1][1]*b1i;
+    const v1i=r[1][0]*b0i+im[1][0]*b0r + r[1][1]*b1i+im[1][1]*b1r;
+    return b0r*v0r + b0i*v0i + b1r*v1r + b1i*v1i;
+  }
+  function measureRho01(rho){
+    const po=[0,0,0,0];
+    for(let i=0;i<D;i++) po[i&3]+=rho.re[i*D+i];
+    let r=Math.random(),acc=0,m=0;
+    for(let k=0;k<4;k++){acc+=po[k]; if(r<=acc){m=k;break;}}
+    let tr=0;
+    for(let i=0;i<D;i++) for(let j=0;j<D;j++){
+      if((i&3)!==m || (j&3)!==m){ rho.re[i*D+j]=0; rho.im[i*D+j]=0; }
+      else if(i===j) tr+=rho.re[i*D+i];
+    }
+    tr=tr||1;
+    for(let i=0;i<64;i++){ rho.re[i]/=tr; rho.im[i]/=tr; }
+    return [m&1,(m>>1)&1];
+  }
+
+  function prepareMessage(){
+    st=fresh();
+    RY(st,0,theta); RZ(st,0,phi);
+    stage=1; bits=[0,0]; anim=1;
+  }
+  function shareBell(){
+    if(!st) prepareMessage();
+    H(st,1); CX(st,1,2);
+    // Mid-protocol: Kraus depolarizing noise on Bob's half of the Bell pair.
+    rho=stToRho(st);
+    if(noise>0) krausDepolarize(rho,2,noise);
+    stage=2; anim=1;
+  }
+  function aliceGates(){
+    if(stage<2) shareBell();
+    if(rho){ applyUnitaryRho(rho,s=>CX(s,0,1)); applyUnitaryRho(rho,s=>H(s,0)); }
+    else { CX(st,0,1); H(st,0); }
+    stage=3; anim=1;
+  }
+  function aliceMeasure(){
+    if(stage<3) aliceGates();
+    if(rho){
+      bits=measureRho01(rho);
+    } else {
+      const p=new Float64Array(D);
+      for(let i=0;i<D;i++) p[i]=st.re[i]*st.re[i]+st.im[i]*st.im[i];
+      const po=[0,0,0,0];
+      for(let i=0;i<D;i++) po[i&3]+=p[i];
+      let r=Math.random(),acc=0,m=3;
+      for(let k=0;k<4;k++){acc+=po[k];if(r<=acc){m=k;break;}}
+      bits=[m&1,(m>>1)&1];
+      let nrm=0;
+      for(let i=0;i<D;i++){
+        if((i&3)!==m){st.re[i]=0;st.im[i]=0;}
+        else nrm+=st.re[i]*st.re[i]+st.im[i]*st.im[i];
+      }
+      nrm=Math.sqrt(nrm)||1;
+      for(let i=0;i<D;i++){st.re[i]/=nrm;st.im[i]/=nrm;}
+    }
+    stage=4; anim=1;
+  }
+  function bobCorrect(){
+    if(stage<4) aliceMeasure();
+    if(rho){
+      if(bits[1]) applyUnitaryRho(rho,s=>X(s,2));
+      if(bits[0]) applyUnitaryRho(rho,s=>Z(s,2));
+      fid=fidFromRho(rho,theta,phi);
+    } else {
+      if(bits[1]) X(st,2);
+      if(bits[0]) Z(st,2);
+      fid=fidelityBobToPsi(st,theta,phi);
+    }
+    stage=5; anim=1;
+  }
+  function reset(){st=null;rho=null;stage=0;bits=[0,0];fid=1;anim=0;update();}
+  function stepOnce(){
+    if(stage===0) prepareMessage();
+    else if(stage===1) shareBell();
+    else if(stage===2) aliceGates();
+    else if(stage===3) aliceMeasure();
+    else if(stage===4) bobCorrect();
+    else reset();
+    update();
+  }
+  function runAll(){
+    reset();
+    prepareMessage(); shareBell(); aliceGates(); aliceMeasure(); bobCorrect();
+    update();
+  }
+  function update(){
+    document.getElementById("stepTxt").textContent=stage===0?"Idle. Set a state, then run.":STEPS[Math.min(stage-1,4)];
+    const f=stage>=5?fid: (rho?fidFromRho(rho,theta,phi):(st?fidelityBobToPsi(st,theta,phi):0));
+    document.getElementById("metrics").innerHTML=`
+      <div><dt>step</dt><dd>${stage}/5</dd></div>
+      <div><dt>classical bits</dt><dd>${stage>=4?bits[0]+""+bits[1]:"—"}</dd></div>
+      <div><dt>F(Bob, ψ)</dt><dd>${f.toFixed(4)}</dd></div>`;
+  }
+  function resize(){const r=canvas.parentElement.getBoundingClientRect();const dpr=Math.min(2,devicePixelRatio||1);canvas.width=Math.floor(r.width*dpr);canvas.height=Math.floor(r.height*dpr);}
+  function drawBlochAt(ctx,cx,cy,R,vec,label,col){
+    ctx.strokeStyle="#3a3328"; ctx.lineWidth=1; ctx.globalAlpha=1;
+    ctx.beginPath(); ctx.arc(cx,cy,R,0,Math.PI*2); ctx.stroke();
+    ctx.beginPath(); ctx.ellipse(cx,cy,R,R*0.34,0,0,Math.PI*2); ctx.stroke();
+    if(vec){
+      const px=cx+vec[0]*R, py=cy-vec[2]*R-vec[1]*R*0.34;
+      ctx.strokeStyle=col; ctx.lineWidth=2;
+      ctx.beginPath(); ctx.moveTo(cx,cy); ctx.lineTo(px,py); ctx.stroke();
+      ctx.fillStyle=col; ctx.beginPath(); ctx.arc(px,py,5,0,Math.PI*2); ctx.fill();
+    }
+    ctx.fillStyle="#f3e6c4"; ctx.font=`${Math.max(12,R*0.2)}px Palatino, serif`;
+    ctx.textAlign="center"; ctx.fillText(label,cx,cy+R+18);
+  }
+  function draw(t){
+    const ctx=canvas.getContext("2d");
+    const w=canvas.width,h=canvas.height;
+    ctx.clearRect(0,0,w,h);
+    const y=h*0.46, R=Math.min(w,h)*0.14;
+    const ax=w*0.22, mx=w*0.38, bx=w*0.78;
+    // figures
+    ctx.strokeStyle="#d4af37"; ctx.setLineDash([6,6]);
+    ctx.beginPath(); ctx.moveTo(mx+R+8,y); ctx.lineTo(bx-R-8,y); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle="#8a7a64"; ctx.font=`${Math.max(12,w*0.016)}px Palatino, serif`;
+    ctx.textAlign="center";
+    ctx.fillText("classical channel (two bits)", (mx+bx)/2, y-R-28);
+    let v0=null,v1=null,v2=null;
+    if(rho){ v0=blochOfRho(rho,0); v1=blochOfRho(rho,1); v2=blochOfRho(rho,2); }
+    else if(st){ v0=blochOf(st,0); v1=blochOf(st,1); v2=blochOf(st,2); }
+    const ghost=targetBloch(theta,phi);
+    drawBlochAt(ctx,ax,y,R, (st||rho)?v0:ghost, "message ψ", "#f0d78c");
+    drawBlochAt(ctx,mx,y,R, v1, "Alice's half", "#00e5ff");
+    drawBlochAt(ctx,bx,y,R, v2, "Bob"+(noise>0?" (Kraus)":""), stage>=5?"#f0d78c":"#ff4fd8");
+    if(stage>=4){
+      const fly=(Math.sin(t*3)*0.5+0.5);
+      ctx.fillStyle="#f0d78c";
+      ctx.font=`${Math.max(16,R*0.28)}px ui-monospace, Menlo, monospace`;
+      ctx.fillText(bits[0]+""+bits[1], mx+(bx-mx)*0.5, y-12-fly*8);
+    }
+    ctx.fillStyle="#f0d78c";
+    ctx.font=`${Math.max(16,R*0.22)}px Palatino, serif`;
+    ctx.fillText(stage>=5?("Teleport complete · F = "+fid.toFixed(4)+(noise>0?"  (Kraus mid-protocol, theory 1−p/2)":"")):"Quantum teleportation protocol", w/2, h*0.12);
+    ctx.fillStyle="#8a7a64";
+    ctx.fillText("ALICE", (ax+mx)/2, h*0.82);
+    ctx.fillText("BOB", bx, h*0.82);
+    anim=Math.max(0,anim-0.02);
+  }
+  document.getElementById("theta").oninput=e=>{theta=+e.target.value;document.getElementById("thv").textContent=theta.toFixed(2);if(stage===0||stage===1){if(stage>=1)prepareMessage();update();}};
+  document.getElementById("phi").oninput=e=>{phi=+e.target.value;document.getElementById("phv").textContent=phi.toFixed(2);if(stage===0||stage===1){if(stage>=1)prepareMessage();update();}};
+  document.getElementById("noise").oninput=e=>{
+    noise=+e.target.value;
+    document.getElementById("pv").textContent=noise.toFixed(2);
+    if(stage>=2){ runAll(); } else update();
+  };
+  document.getElementById("run").onclick=runAll;
+  document.getElementById("step").onclick=stepOnce;
+  document.getElementById("reset").onclick=reset;
+  window.addEventListener("resize",resize);
+  resize(); update();
+  (function loop(ts){draw(ts*0.001);requestAnimationFrame(loop);})(0);
+  window.labReady=true;
+})();
+</script>
+</body>
+</html>

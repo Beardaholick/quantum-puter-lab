@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Time Crystal</title>
+<link rel="stylesheet" href="../theme.css">
+
+<meta name="theme-color" content="#07060a">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<link rel="manifest" href="../../manifest.webmanifest">
+<link rel="apple-touch-icon" href="../../icons/apple-touch-icon.png">
+<script src="../../app-pwa.js" defer></script>
+
+<style>
+  .wrap { display: grid; grid-template-columns: 310px 1fr; min-height: calc(100vh - 54px); }
+  aside { padding: 1rem 1.1rem; border-right: 1px solid var(--line); background: #0c0a10; overflow: auto; }
+  .panes { display: grid; grid-template-rows: 1fr 220px; height: calc(100vh - 54px); }
+  canvas { display: block; width: 100%; height: 100%; }
+  @media (max-width: 800px) { .wrap { grid-template-columns: 1fr; } .panes { height: 80vh; } }
+</style>
+</head>
+<body>
+<div class="grain" aria-hidden="true"></div>
+<header>
+  <a class="back" href="../../index.html">← Lab</a>
+  <h1>TIME CRYSTAL</h1>
+  <p class="lede">A kicked Ising chain with period-doubled magnetization · a Floquet toy, not a clock made of time</p>
+</header>
+<div class="wrap">
+  <aside>
+    <label>Drive angle π − ε · ε = <span id="ev">0.12</span></label>
+    <input id="eps" type="range" min="0.00" max="0.40" step="0.01" value="0.12">
+    <label>Ising coupling J = <span id="jv">0.35</span></label>
+    <input id="J" type="range" min="0.00" max="1.00" step="0.01" value="0.35">
+    <label>Disorder W = <span id="wv">0.40</span></label>
+    <input id="W" type="range" min="0.00" max="1.20" step="0.01" value="0.40">
+    <div class="row">
+      <button class="act primary" id="run">Drive</button>
+      <button class="act" id="reset">Reset ↑↑↑…</button>
+    </div>
+    <dl class="metrics" id="metrics"></dl>
+    <p class="honest">A discrete time crystal is a periodically driven (Floquet) many-body system whose observables repeat every <em>two</em> (or more) drive periods — they spontaneously break the discrete time-translation symmetry of the drive. This toy is a 1-D chain of 12 classical Ising spins with a near-π kick, Ising coupling, and on-site disorder: a cartoon of the Yao / Else–Bauer–Nayak picture, not a laboratory many-body localized chain, and not a crystal “made of time.”</p>
+  </aside>
+  <div class="panes">
+    <section class="stage"><canvas id="chain"></canvas></section>
+    <section class="stage" style="min-height:220px"><canvas id="plot"></canvas></section>
+  </div>
+</div>
+<script>
+(function(){
+  const chain=document.getElementById("chain"), plot=document.getElementById("plot");
+  const N=12;
+  let eps=0.12, J=0.35, W=0.40, running=true, tick=0;
+  let spins=new Array(N).fill(1);
+  let h=new Float64Array(N);
+  const Mz=[];
+  function reseed(){
+    for(let i=0;i<N;i++) h[i]=(Math.random()*2-1)*W;
+    spins=new Array(N).fill(1); tick=0; Mz.length=0; Mz.push(1);
+  }
+  function kick(){
+    // Near-π pulse about x: each spin flips with probability cos²(ε/2) wait
+    // A pulse exp(-i (π-ε)/2 X) on a Z-eigenstate |↑> goes to ≈ |↓> with a small error ~ε
+    // Toy: flip every spin, then with small angle error flip back with p ~ ε², plus a thermal-ish Ising accept
+    const angle=Math.PI-eps;
+    for(let i=0;i<N;i++){
+      // exact two-level: P(stay) = cos²(angle/2)
+      const pStay=Math.cos(angle/2)**2;
+      if(Math.random()>pStay) spins[i]*=-1;
+    }
+    // Ising + disorder “precession” in Z, implemented as a Metropolis sweep that favors aligned neighbors
+    // (classical stand-in for e^{-i Z H_z} which only adds phases in QM; we use a slight relaxation + disorder pin)
+    for(let i=0;i<N;i++){
+      const L=spins[(i+N-1)%N], R=spins[(i+1)%N];
+      const dE=2*spins[i]*(J*(L+R)+h[i]); // energy change if flip
+      // we do NOT thermalize fully — DTC needs MBL, so only a weak update
+      if(dE<0 && Math.random()<0.15) spins[i]*=-1;
+    }
+    tick++;
+    Mz.push(spins.reduce((a,b)=>a+b,0)/N);
+    if(Mz.length>160) Mz.shift();
+  }
+  function resize(){
+    [chain,plot].forEach(c=>{
+      const r=c.parentElement.getBoundingClientRect();
+      const dpr=Math.min(2,devicePixelRatio||1);
+      c.width=Math.floor(r.width*dpr); c.height=Math.floor(r.height*dpr);
+    });
+  }
+  function drawChain(){
+    const ctx=chain.getContext("2d");
+    const w=chain.width,hgt=chain.height;
+    ctx.clearRect(0,0,w,hgt);
+    const cx=w/2, cy=hgt*0.52, R=Math.min(w,hgt)*0.32;
+    ctx.strokeStyle="#3a3328"; ctx.beginPath(); ctx.arc(cx,cy,R,0,Math.PI*2); ctx.stroke();
+    for(let i=0;i<N;i++){
+      const a=-Math.PI/2+i*2*Math.PI/N;
+      const x=cx+Math.cos(a)*R, y=cy+Math.sin(a)*R;
+      const up=spins[i]>0;
+      ctx.fillStyle=up?"#f0d78c":"#00e5ff";
+      ctx.shadowColor=ctx.fillStyle; ctx.shadowBlur=16;
+      ctx.beginPath(); ctx.arc(x,y,14*(w/900),0,Math.PI*2); ctx.fill();
+      ctx.shadowBlur=0;
+      ctx.fillStyle="#f3e6c4"; ctx.font=`${Math.max(11,R*0.08)}px Palatino, serif`;
+      ctx.textAlign="center";
+      ctx.fillText(up?"↑":"↓", x, y+4);
+    }
+    ctx.fillStyle="#f0d78c";
+    ctx.font=`${Math.max(16,R*0.12)}px Palatino, serif`;
+    ctx.textAlign="center";
+    ctx.fillText("drive period "+tick+"   ·   magnetization period should be 2", cx, hgt*0.12);
+  }
+  function drawPlot(){
+    const ctx=plot.getContext("2d");
+    const w=plot.width,h=plot.height;
+    ctx.clearRect(0,0,w,h);
+    const L=40,B=24,T=16,Rgt=16,W=w-L-Rgt,H=h-T-B;
+    ctx.strokeStyle="#3a3328"; ctx.strokeRect(L,T,W,H);
+    // zero line
+    ctx.beginPath(); ctx.moveTo(L,T+H/2); ctx.lineTo(L+W,T+H/2); ctx.stroke();
+    if(Mz.length>1){
+      ctx.strokeStyle="#d4af37"; ctx.lineWidth=2;
+      ctx.beginPath();
+      Mz.forEach((m,i)=>{
+        const x=L+W*(i/Math.max(1,Mz.length-1));
+        const y=T+H*(0.5-0.48*m);
+        if(i===0)ctx.moveTo(x,y); else ctx.lineTo(x,y);
+      });
+      ctx.stroke();
+      // mark even kicks
+      ctx.fillStyle="#00e5ff";
+      Mz.forEach((m,i)=>{
+        if(i%2===0){
+          const x=L+W*(i/Math.max(1,Mz.length-1));
+          const y=T+H*(0.5-0.48*m);
+          ctx.beginPath(); ctx.arc(x,y,2.5,0,Math.PI*2); ctx.fill();
+        }
+      });
+    }
+    ctx.fillStyle="#8a7a64"; ctx.font="11px ui-monospace, Menlo, monospace";
+    ctx.fillText("⟨Z⟩", 8, 14);
+    ctx.fillText("kick number  (cyan = even periods)", L, h-6);
+    // rough period-2 witness: corr of even vs odd
+    let even=0,odd=0,ne=0,no=0;
+    Mz.forEach((m,i)=>{if(i%2===0){even+=m;ne++;}else{odd+=m;no++;}});
+    const me=ne?even/ne:0, mo=no?odd/no:0;
+    document.getElementById("metrics").innerHTML=`
+      <div><dt>kicks</dt><dd>${tick}</dd></div>
+      <div><dt>⟨Z⟩ now</dt><dd>${(Mz[Mz.length-1]||0).toFixed(3)}</dd></div>
+      <div><dt>mean even</dt><dd>${me.toFixed(3)}</dd></div>
+      <div><dt>mean odd</dt><dd>${mo.toFixed(3)}</dd></div>
+      <div><dt>period-2?</dt><dd>${(me*mo<0 && Math.abs(me-mo)>0.3)?"yes — subharmonic":"weak / melting"}</dd></div>`;
+  }
+  document.getElementById("eps").oninput=e=>{eps=+e.target.value;document.getElementById("ev").textContent=eps.toFixed(2);};
+  document.getElementById("J").oninput=e=>{J=+e.target.value;document.getElementById("jv").textContent=J.toFixed(2);};
+  document.getElementById("W").oninput=e=>{W=+e.target.value;document.getElementById("wv").textContent=W.toFixed(2);reseed();};
+  document.getElementById("run").onclick=()=>{running=!running;document.getElementById("run").textContent=running?"Pause":"Drive";};
+  document.getElementById("reset").onclick=reseed;
+  window.addEventListener("resize",resize);
+  resize(); reseed();
+  let acc=0,last=0;
+  function loop(ts){
+    const dt=(ts-last)/1000||0.016; last=ts; acc+=dt;
+    if(running && acc>0.18){ kick(); acc=0; }
+    drawChain(); drawPlot();
+    requestAnimationFrame(loop);
+  }
+  requestAnimationFrame(loop);
+  window.labReady=true;
+})();
+</script>
+</body>
+</html>
